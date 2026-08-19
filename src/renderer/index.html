@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Echo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell" id="shell">
+      <div class="tabstrip">
+        <div class="tabs" id="tabs">
+          <button class="circle-btn" id="new-tab" title="New tab" aria-label="New tab">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+          </button>
+        </div>
+      </div>
+      <div class="toolbar">
+        <button class="nav-btn" id="back" title="Back" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+        </button>
+        <button class="nav-btn" id="forward" title="Forward" aria-label="Forward">
+          <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
+        </button>
+        <button class="nav-btn" id="reload" title="Reload" aria-label="Reload">
+          <svg id="reload-icon" viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
+          <svg id="stop-icon" viewBox="0 0 24 24" hidden><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
+        </button>
+        <form id="url-form" class="omnibox">
+          <svg class="omnibox-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
+          <input id="url" type="text" spellcheck="false" placeholder="Search Google or type a URL" />
+        </form>
+        <button class="nav-btn rec-btn" id="record" title="Record" aria-label="Record">
+          <i class="rec-dot"></i>
+        </button>
+        <span class="led" id="led" title="MCP"><i></i></span>
+        <button class="nav-btn" id="menu" title="Customize and control" aria-label="Menu">
+          <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
+        </button>
+      </div>
+    </div>
+
+    <section class="settings" id="settings" hidden>
+      <header class="settings-top">
+        <button class="nav-btn" id="settings-back" title="Back" aria-label="Back">
+          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+        </button>
+        <h1>Settings</h1>
+      </header>
+      <div class="settings-body">
+        <nav class="settings-nav">
+          <button class="nav-item active" data-section="connections">Connections</button>
+          <button class="nav-item" data-section="recordings">Recordings</button>
+          <button class="nav-item" data-section="testing">Testing</button>
+          <button class="nav-item" data-section="transfers">Transfers</button>
+          <button class="nav-item" data-section="system">System</button>
+          <button class="nav-item" data-section="about">About</button>
+          <button class="nav-item" data-section="privacy">Privacy</button>
+          <button class="nav-item" data-section="terms">Terms</button>
+        </nav>
+        <div class="settings-content">
+          <section id="section-connections" class="card-list">
+            <h2>AI connections</h2>
+            <p class="help">
+              Connect Cursor, Claude, or another MCP client. 127.0.0.1 is this computer. Anything you sign in to here can be seen by a connected assistant.
+            </p>
+            <p class="help" id="os-firewall"></p>
+            <div class="panel">
+            <div class="card stack">
+              <div>
+                <h3>MCP server</h3>
+                <p class="meta" id="mcp-status">Starting…</p>
+              </div>
+              <div class="url-row">
+                <div>
+                  <p class="meta">This computer</p>
+                  <p class="meta"><code id="mcp-url"></code></p>
+                </div>
+                <button class="chrome-btn" type="button" id="copy-local-url">Copy</button>
+              </div>
+              <div class="url-row">
+                <div>
+                  <p class="meta">This network (this computer’s address)</p>
+                  <p class="meta"><code id="mcp-lan-url"></code></p>
+                  <p class="help" id="mcp-lan-extra"></p>
+                </div>
+                <button class="chrome-btn" type="button" id="copy-lan-url">Copy</button>
+              </div>
+            </div>
+            </div>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Cursor</h3>
+                <p class="meta" id="cursor-status">Not connected</p>
+              </div>
+              <button class="chrome-btn" id="connect-cursor">Connect</button>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Claude Desktop</h3>
+                <p class="meta" id="claude-status">Not connected</p>
+                <p class="help">
+                  Use Connect — not Claude’s “Add custom connector” (that is for public HTTPS). Then Developer → Local MCP servers.
+                </p>
+              </div>
+              <button class="chrome-btn" id="connect-claude">Connect</button>
+            </div>
+            <div class="card">
+              <div>
+                <h3>ChatGPT / Codex</h3>
+                <p class="meta" id="chatgpt-status">Not connected</p>
+              </div>
+              <button class="chrome-btn" id="connect-chatgpt">Connect</button>
+            </div>
+            </div>
+            <div class="panel">
+            <div class="card stack">
+              <div>
+                <h3>Any other AI</h3>
+                <p class="help">
+                  Paste a snippet into Continue, Cline, Windsurf, or VS Code. Use This computer on this machine, This network for another device on Wi-Fi.
+                </p>
+                <p class="meta" id="other-status">No other assistant connected</p>
+              </div>
+              <p class="meta">HTTP (this computer) — Cursor, Continue, Cline, Windsurf</p>
+              <textarea class="snippet" id="snippet-http" readonly rows="6" spellcheck="false"></textarea>
+              <button class="chrome-btn" type="button" id="copy-http">Copy HTTP config</button>
+              <p class="meta">HTTP (this network)</p>
+              <textarea class="snippet" id="snippet-http-lan" readonly rows="6" spellcheck="false"></textarea>
+              <button class="chrome-btn" type="button" id="copy-http-lan">Copy network HTTP config</button>
+              <p class="meta" id="stdio-help">stdio (this computer) — Claude Desktop and command-only clients. Echo starts Node with a full path so Finder, Dock, and Start Menu launches still work.</p>
+              <textarea class="snippet" id="snippet-stdio" readonly rows="12" spellcheck="false"></textarea>
+              <button class="chrome-btn" type="button" id="copy-stdio">Copy stdio config</button>
+              <p class="meta">VS Code / Copilot (.vscode/mcp.json, this computer)</p>
+              <textarea class="snippet" id="snippet-vscode" readonly rows="10" spellcheck="false"></textarea>
+              <button class="chrome-btn" type="button" id="copy-vscode">Copy VS Code config</button>
+            </div>
+            </div>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Bearer token</h3>
+                <p class="meta">Required in the Authorization header. Do not post this publicly.</p>
+                <p class="meta"><code id="mcp-token"></code></p>
+              </div>
+              <button class="chrome-btn" type="button" id="copy-token">Copy token</button>
+            </div>
+            </div>
+            <p class="note" id="connect-note"></p>
+          </section>
+          <section id="section-recordings" class="card-list" hidden>
+            <h2>Recordings</h2>
+            <p class="help">
+              Record clicks here and from a connected assistant. Play back later with no model.
+            </p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Recorder</h3>
+                <p class="meta" id="record-status">Not recording</p>
+              </div>
+              <button class="chrome-btn filled" id="record-toggle">Start recording</button>
+            </div>
+            </div>
+            <div class="panel" id="recording-list"></div>
+            <p class="note" id="record-note"></p>
+          </section>
+          <section id="section-testing" class="card-list" hidden>
+            <h2>Product testing</h2>
+            <p class="help">Save screenshots and a short report while you click through a site.</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Current run</h3>
+                <p class="meta" id="test-id">No run in progress</p>
+                <p class="meta" id="test-counts"></p>
+              </div>
+            </div>
+            </div>
+            <div class="actions">
+              <button class="chrome-btn filled" id="test-start">Start run</button>
+              <button class="chrome-btn" id="test-end">End run</button>
+            </div>
+            <p class="note" id="test-note"></p>
+          </section>
+          <section id="section-transfers" class="card-list" hidden>
+            <h2>What the assistant receives</h2>
+            <p class="help">
+              Choose what connected assistants can call, and what those calls send. Off does not delete anything on this computer.
+            </p>
+            <h2>Tools</h2>
+            <p class="help">
+              Cursor often caps about 40 MCP tools across every server. Echo is at <strong id="tool-count">33</strong> with all groups on. Reconnect after changing this.
+            </p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Browse and click</h3>
+                <p class="meta">16 tools: tabs, navigate, snapshot, click, type, and the rest of driving the page.</p>
+                <p class="tokens">On uses 16 slots. Off if another MCP server already fills the cap.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsBrowse" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Screenshots and live feed</h3>
+                <p class="meta">2 tools: screenshot and watch.</p>
+                <p class="tokens">On uses 2 slots. Payload size is under Payloads below.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsSee" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Search and article text</h3>
+                <p class="meta">2 tools: search_web and extract_readable.</p>
+                <p class="tokens">On uses 2 slots.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsSearch" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Console and network</h3>
+                <p class="meta">2 tools: console_errors and network_failures.</p>
+                <p class="tokens">On uses 2 slots. Off if you are not debugging pages.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsDebug" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Product tests</h3>
+                <p class="meta">5 tools: viewport and test start / assert / end.</p>
+                <p class="tokens">On uses 5 slots.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsTest" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Recordings</h3>
+                <p class="meta">5 tools. The toolbar record button still works if this is off.</p>
+                <p class="tokens">On uses 5 slots.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsRecord" /><span></span></label>
+            </div>
+            </div>
+            <h2>Payloads</h2>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Page photos with snapshot</h3>
+                <p class="meta">Photo plus clickable refs. Assistants snapshot often.</p>
+                <p class="tokens">On is the largest ongoing cost. Off is refs only.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="snapshotPhoto" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Screenshot images</h3>
+                <p class="meta">Return the photo on screenshot. A PNG still saves locally.</p>
+                <p class="tokens">On costs about one snapshot photo per shot. Off sends a file path.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="screenshotPhoto" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Live feed frames</h3>
+                <p class="meta">Short clips from watch.</p>
+                <p class="tokens">On is several photos per clip (often 4–12). Off is a one-line skip.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="watchFrames" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Readable page text</h3>
+                <p class="meta">Article-style markdown from extract_readable.</p>
+                <p class="tokens">Short pages are cheap; long articles can be thousands of tokens.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="readableText" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>How-to guide on connect</h3>
+                <p class="meta">Attach the full skill tree on connect. Reconnect after changing this.</p>
+                <p class="tokens">On is a few thousand tokens once per session. Off is a short reminder; echo_help can still load the guide.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="skillTreeOnConnect" /><span></span></label>
+            </div>
+            </div>
+          </section>
+          <section id="section-system" class="card-list" hidden>
+            <h2>System</h2>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3 id="autostart-title">Open at login</h3>
+                <p class="meta" id="autostart-meta">Start Echo in the background so the browser is ready before Cursor.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="autostart" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Downloads and reports</h3>
+                <p class="meta">Screenshots, recordings, test runs, and files you download.</p>
+              </div>
+              <button class="chrome-btn" id="open-data">Open folder</button>
+            </div>
+            </div>
+          </section>
+          <section id="section-about" class="card-list" hidden>
+            <h2>About Echo</h2>
+            <p class="help" id="about-version">Version · Chromium-based · runs only on this computer</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Privacy Policy</h3>
+                <p class="meta">How browsing data stays on this computer, and what a connected assistant can see.</p>
+              </div>
+              <button class="chrome-btn" data-open-section="privacy">View</button>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Terms of Service</h3>
+                <p class="meta">Rules for using the app, including AI control and acceptable use.</p>
+              </div>
+              <button class="chrome-btn" data-open-section="terms">View</button>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Open-source license</h3>
+                <p class="meta">The app is released under the MIT License.</p>
+              </div>
+            </div>
+            </div>
+            <p class="note">These documents describe this software. They are not a substitute for legal advice. Google, Cursor, and Claude have their own policies.</p>
+          </section>
+          <section id="section-privacy" class="card-list legal" hidden>
+            <h2>Privacy Policy</h2>
+            <p class="meta">Effective August 19, 2026</p>
+            <p class="help">Echo runs on your computer. It does not create an account with us and does not upload your browsing to our servers.</p>
+            <h3>What stays on your device</h3>
+            <ul>
+              <li>Cookies and site storage for this app only — not your Google Chrome profile</li>
+              <li>Downloads, screenshots, recordings, and test reports in the app data folder (Settings → System)</li>
+              <li>A local MCP token so only clients you configure can control the browser. The server also listens on your local network.</li>
+            </ul>
+            <h3>What other companies may see</h3>
+            <p>Sites you visit (including Google Search) receive your request, IP address, and cookies under <strong>their</strong> policies.</p>
+            <p>If you connect Cursor, Claude Desktop, or another MCP client, that app can see page content, screenshots, and anything you are signed in to here. Their privacy policies apply to that data.</p>
+            <h3>What we do not collect</h3>
+            <p>We do not run an account system, ads, or our own analytics. We do not sell browsing data.</p>
+            <h3>Your choices</h3>
+            <ul>
+              <li>Skip Connect if you do not want an assistant to see this window</li>
+              <li>Sign out of sites you do not want shared with an assistant</li>
+              <li>Delete the app data folder to wipe the local profile and token</li>
+            </ul>
+            <p class="note">This policy matches how the app works. It is not legal advice. We may update it when the product changes.</p>
+          </section>
+          <section id="section-terms" class="card-list legal" hidden>
+            <h2>Terms of Service</h2>
+            <p class="meta">Effective August 19, 2026</p>
+            <p class="help">By using Echo you agree to these terms. The software is also licensed under MIT (see the LICENSE file).</p>
+            <h3>The app</h3>
+            <p>Echo is a desktop browser with an optional MCP server. It does not sell model API credits. You use your own Cursor, Claude, or other MCP client subscription if you connect one.</p>
+            <h3>Acceptable use</h3>
+            <p>You agree not to use the app to break the law; attack or access systems without permission; bypass security you are not authorized to test; distribute malware; harm minors; or abuse third-party sites in violation of their terms. You are responsible for sites you visit and for actions a connected assistant takes in this window.</p>
+            <h3>AI control</h3>
+            <p>Connecting Cursor, Claude Desktop, or another MCP client authorizes that assistant to navigate, click, type, capture screenshots, read pages, and start or play recordings. Do not connect it to accounts or data you are not allowed to share.</p>
+            <h3>Third parties</h3>
+            <p>Google, websites you open, Cursor, and Claude have their own terms. We are not affiliated with Google, Cursor, or Anthropic. Looking like Chrome does not make this app Google Chrome.</p>
+            <h3>No warranty</h3>
+            <p>THE APP IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND. We do not promise it is bug-free or suitable for banking, medical, or legal use.</p>
+            <h3>Limitation of liability</h3>
+            <p>To the maximum extent allowed by law, we are not liable for lost data, account issues, assistant mistakes, site bans, or other damages from your use of the app.</p>
+            <p class="note">You may stop using the app by uninstalling it. These terms may change when the app changes. This is not legal advice.</p>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <script src="./main.js"></script>
+  </body>
+</html>

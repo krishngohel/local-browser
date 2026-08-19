@@ -1,0 +1,160 @@
+{
+  "name": "local-browser",
+  "version": "1.0.0",
+  "description": "Echo — local Chrome-compatible browser with MCP for any AI client",
+  "main": "out/main/index.js",
+  "author": "Echo contributors",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "build:prod": "node scripts/build.js --prod",
+    "dev": "npm run build && electron .",
+    "start": "electron .",
+    "dist": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --publish never",
+    "dist:win": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --win nsis --publish never",
+    "dist:mac": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --mac dmg --publish never",
+    "dist:linux": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --linux AppImage --publish never",
+    "icon": "node scripts/ensure-icon.js --force",
+    "packaging:check": "node scripts/ensure-icon.js && node scripts/check-packaging.js",
+    "start-menu": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-start-menu.ps1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "playwright-core": "^1.62.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "electron": "^36.4.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.8.3"
+  },
+  "build": {
+    "appId": "com.echo.browser",
+    "productName": "Echo",
+    "copyright": "Copyright © 2026 Echo contributors",
+    "artifactName": "Echo-Setup-${version}-${arch}.${ext}",
+    "compression": "maximum",
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "!out/**/*.map",
+      "package.json",
+      "skills/ECHO-SKILL-TREE.md"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/playwright-core/**"
+    ],
+    "extraMetadata": {
+      "main": "out/main/index.js",
+      "name": "echo",
+      "productName": "Echo"
+    },
+    "extraResources": [
+      {
+        "from": "build/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "legal",
+        "to": "legal"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "skills/ECHO-SKILL-TREE.md",
+        "to": "skills/ECHO-SKILL-TREE.md"
+      }
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "executableName": "Echo",
+      "signExecutable": false,
+      "artifactName": "Echo-Setup-${version}-${arch}.${ext}",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "notarize": false,
+      "minimumSystemVersion": "11.0",
+      "darkModeSupport": true,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Echo uses the camera when a website you visit asks for it.",
+        "NSMicrophoneUsageDescription": "Echo uses the microphone when a website you visit asks for it.",
+        "NSLocalNetworkUsageDescription": "Echo accepts connections on this computer and your local network so assistants can reach the MCP server."
+      },
+      "artifactName": "Echo-${version}-mac-${arch}.${ext}",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ]
+    },
+    "dmg": {
+      "title": "Echo",
+      "sign": false,
+      "contents": [
+        {
+          "x": 130,
+          "y": 150
+        },
+        {
+          "x": 410,
+          "y": 150,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "category": "Network",
+      "executableName": "echo",
+      "artifactName": "Echo-${version}-linux-${arch}.${ext}",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Echo",
+      "uninstallDisplayName": "Echo",
+      "license": "LICENSE",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}
