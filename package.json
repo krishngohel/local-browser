@@ -1,6 +1,6 @@
 {
   "name": "local-browser",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Echo — local Chrome-compatible browser with MCP for any AI client",
   "main": "out/main/index.js",
   "author": "Echo contributors",
@@ -11,7 +11,7 @@
     "dev": "npm run build && electron .",
     "start": "electron .",
     "dist": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --publish never",
-    "dist:win": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --win nsis --publish never",
+    "dist:win": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --win nsis --x64 --arm64 --publish never",
     "dist:mac": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --mac dmg --publish never",
     "dist:linux": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --linux AppImage --publish never",
     "icon": "node scripts/ensure-icon.js --force",
