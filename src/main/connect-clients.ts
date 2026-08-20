@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { app } from "electron";
 import { mcpUrl, mcpUrlForHost, userDataDir } from "./paths";
 import { lanIPv4s } from "./net";
@@ -124,21 +125,40 @@ export function registerCursor(token: string): ConnectResult {
 }
 
 function writeClaudeConfig(file: string, entry: ClaudeLaunchEntry): void {
-  const json = readJson(file) ?? { mcpServers: {} };
-  if (!json.mcpServers || typeof json.mcpServers !== "object") {
+  let json: { mcpServers?: Record<string, unknown>; [key: string]: unknown };
+  if (fs.existsSync(file)) {
+    const parsed: unknown = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("existing Claude config must contain a JSON object");
+    }
+    json = parsed as typeof json;
+  } else {
+    json = {};
+  }
+  if (json.mcpServers === undefined) {
     json.mcpServers = {};
+  } else if (!json.mcpServers || typeof json.mcpServers !== "object" || Array.isArray(json.mcpServers)) {
+    throw new Error('existing Claude config field "mcpServers" must be a JSON object');
   }
   backup(file);
-  json.mcpServers[SERVER_NAME] = entry;
-  if (json.mcpServers[LEGACY_SERVER_NAME]) {
-    json.mcpServers[LEGACY_SERVER_NAME] = entry;
+  json.mcpServers![SERVER_NAME] = entry;
+  if (json.mcpServers![LEGACY_SERVER_NAME]) {
+    json.mcpServers![LEGACY_SERVER_NAME] = entry;
   }
   writeJson(file, json);
 }
 
 export function registerClaudeDesktop(token: string): ConnectResult {
   const targets = claudeWriteTargets();
-  const entry = claudeLaunchEntry(mcpUrl(), token);
+  const bridge = packagedBridgeLaunch();
+  if (app.isPackaged && !bridge) {
+    return {
+      ok: false,
+      message:
+        "Echo's bundled Claude bridge is incomplete. Reinstall or update Echo; no Claude config was changed.",
+    };
+  }
+  const entry = bridge ?? claudeLaunchEntry(mcpUrl(), token);
   const written: string[] = [];
   const errors: string[] = [];
   for (const file of targets) {
@@ -158,13 +178,23 @@ export function registerClaudeDesktop(token: string): ConnectResult {
   }
 
   const msixWritten = written.filter((p) => p.includes(`${path.sep}Packages${path.sep}Claude_`));
-  const bridge = packagedBridgeLaunch();
   const node = findNode();
   const pathLines = written.map((p) => `· ${p}`).join("\n");
   let steps: string;
   if (bridge) {
+    const diagnostic = testPackagedBridge(bridge);
+    if (!diagnostic.ok) {
+      return {
+        ok: false,
+        message:
+          `Claude config was saved, but Echo could not validate the bridge: ${diagnostic.message}\n\n` +
+          `Config written to:\n${pathLines}\n\nDiagnostics: ${path.join(userDataDir(), "echo-mcp-bridge.log")}`,
+        path: written[0],
+        paths: written,
+      };
+    }
     steps =
-      "Saved Claude config using Echo itself (no Node.js needed). Next: 1) Keep Echo running. 2) In Claude open the menu → Settings → Developer → Edit Config and confirm an “echo” block exists (Local MCP servers may stay empty until Claude reloads). 3) Fully quit Claude — Cmd+Q on Mac, tray icon → Exit on Windows (closing the chat window is not enough). 4) Reopen Claude and check Settings → Developer → Local MCP servers for “echo”. The hammer icon in chat means MCP is active.";
+      "Saved and validated Claude's Echo bridge (including an MCP initialize handshake; no Node.js needed). Next: 1) Keep Echo running. 2) Fully quit Claude — Cmd+Q on Mac, tray icon → Exit on Windows (closing the chat window is not enough). 3) Reopen Claude and check Settings → Developer → Local MCP servers for “echo”.";
   } else if (node) {
     steps =
       "Saved Claude config. Keep Echo running, use Claude → Settings → Developer → Edit Config to confirm “echo”, fully quit Claude (tray Exit, not just the window), reopen, then check Local MCP servers.";
@@ -284,7 +314,8 @@ function packagedBridgeLaunch(): ClaudeLaunchEntry | null {
   try {
     if (!app.isPackaged) return null;
     const bridge = path.join(process.resourcesPath, "echo-mcp-bridge.cjs");
-    if (!fs.existsSync(bridge)) return null;
+    const proxy = path.join(process.resourcesPath, "echo-mcp-proxy.mjs");
+    if (!fs.existsSync(bridge) || !fs.existsSync(proxy)) return null;
     return {
       command: app.getPath("exe"),
       args: [bridge],
@@ -297,6 +328,28 @@ function packagedBridgeLaunch(): ClaudeLaunchEntry | null {
   } catch {
     return null;
   }
+}
+
+function testPackagedBridge(entry: ClaudeLaunchEntry): { ok: boolean; message: string } {
+  const result = spawnSync(entry.command, [...entry.args, "--self-test"], {
+    env: { ...process.env, ...entry.env },
+    encoding: "utf8",
+    timeout: 15_000,
+    windowsHide: true,
+    shell: false,
+  });
+  if (result.error) {
+    const suffix = (result.error as NodeJS.ErrnoException).code === "ETIMEDOUT" ? " (timed out after 15 seconds)" : "";
+    return { ok: false, message: `${result.error.message}${suffix}` };
+  }
+  if (result.status !== 0) {
+    const output = `${result.stderr || ""}\n${result.stdout || ""}`.trim();
+    return {
+      ok: false,
+      message: output || `bridge process exited with code ${result.status ?? "unknown"}`,
+    };
+  }
+  return { ok: true, message: "MCP initialize handshake passed" };
 }
 
 function claudePathEnv(node: string | null): Record<string, string> | undefined {

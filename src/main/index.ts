@@ -497,16 +497,6 @@ if (!gotLock) {
     recorder.setOnChange(broadcast);
     hub.setRecorder(recorder);
     registerIpc();
-    createWindow();
-    createTray();
-    installAppMenu();
-    installDockMenu();
-    app.setAboutPanelOptions({
-      applicationName: "Echo",
-      applicationVersion: app.getVersion(),
-      copyright: "Copyright © 2026 Echo contributors",
-    });
-    warnIfRunningFromDiskImage();
 
     try {
       await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder), app.getVersion());
@@ -527,6 +517,20 @@ if (!gotLock) {
         error instanceof Error ? error.message : String(error),
       );
     }
+
+    // Do not expose Connect until the selected fallback port is listening and
+    // persisted for the bridge. This prevents a fresh install from saving a
+    // stale/default port during the short startup window.
+    createWindow();
+    createTray();
+    installAppMenu();
+    installDockMenu();
+    app.setAboutPanelOptions({
+      applicationName: "Echo",
+      applicationVersion: app.getVersion(),
+      copyright: "Copyright © 2026 Echo contributors",
+    });
+    warnIfRunningFromDiskImage();
 
     void hub.connectPlaywright();
 

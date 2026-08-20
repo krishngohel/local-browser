@@ -64,18 +64,34 @@ async function main() {
     fs.copyFileSync(iconSrc, path.join("out", "icon.png"));
   }
 
-  const bridgeSrc = path.join("scripts", "echo-mcp-bridge.cjs");
   const bridgeDestDir = path.join("out", "resources");
-  if (fs.existsSync(bridgeSrc)) {
-    fs.mkdirSync(bridgeDestDir, { recursive: true });
-    fs.copyFileSync(bridgeSrc, path.join(bridgeDestDir, "echo-mcp-bridge.cjs"));
-  }
+  fs.mkdirSync(bridgeDestDir, { recursive: true });
+  fs.copyFileSync(
+    path.join("scripts", "echo-mcp-bridge.cjs"),
+    path.join(bridgeDestDir, "echo-mcp-bridge.cjs"),
+  );
 
-  const mcpRemoteSrc = path.join("node_modules", "mcp-remote");
-  const mcpRemoteDest = path.join("out", "resources", "mcp-remote");
-  if (fs.existsSync(mcpRemoteSrc)) {
-    fs.cpSync(mcpRemoteSrc, mcpRemoteDest, { recursive: true });
-  }
+  // mcp-remote's published proxy imports dependencies that npm may hoist outside
+  // its package directory. Bundle the complete graph into one portable file so
+  // packaged Echo never relies on a machine-wide Node/npm installation.
+  await esbuild.build({
+    entryPoints: ["node_modules/mcp-remote/dist/proxy.js"],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "esm",
+    banner: {
+      js: 'import { createRequire as __echoCreateRequire } from "node:module"; const require = __echoCreateRequire(import.meta.url);',
+    },
+    outfile: path.join(bridgeDestDir, "echo-mcp-proxy.mjs"),
+    minify: prod,
+    sourcemap: false,
+    logLevel: "info",
+  });
+
+  // Prevent stale copied dependency trees from surviving incremental builds.
+  fs.rmSync(path.join(bridgeDestDir, "mcp-remote"), { recursive: true, force: true });
+  fs.rmSync(path.join(bridgeDestDir, "echo-mcp-proxy.cjs"), { force: true });
 }
 
 main().catch((err) => {
