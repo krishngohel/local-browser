@@ -24,6 +24,48 @@ export function claudeDesktopConfigPath(): string {
   return path.join(os.homedir(), ".config", "Claude", "claude_desktop_config.json");
 }
 
+/** Windows Store (MSIX) installs read a virtualized copy under Packages\\Claude_*\\LocalCache. */
+function claudeMsixConfigPaths(): string[] {
+  if (process.platform !== "win32") return [];
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) return [];
+  const paths: string[] = [];
+  try {
+    const packagesDir = path.join(localAppData, "Packages");
+    if (!fs.existsSync(packagesDir)) return paths;
+    for (const name of fs.readdirSync(packagesDir)) {
+      if (!name.startsWith("Claude_")) continue;
+      const pkgRoot = path.join(packagesDir, name);
+      if (!fs.statSync(pkgRoot).isDirectory()) continue;
+      paths.push(path.join(pkgRoot, "LocalCache", "Roaming", "Claude", "claude_desktop_config.json"));
+    }
+  } catch {
+    /* ignore */
+  }
+  return paths;
+}
+
+export function claudeDesktopConfigPaths(): string[] {
+  return [...new Set([claudeDesktopConfigPath(), ...claudeMsixConfigPaths()])];
+}
+
+function claudeWriteTargets(): string[] {
+  return claudeDesktopConfigPaths();
+}
+
+function claudeEchoRegistered(json: { mcpServers?: Record<string, unknown> } | null): boolean {
+  return Boolean(json?.mcpServers?.[SERVER_NAME] || json?.mcpServers?.[LEGACY_SERVER_NAME]);
+}
+
+export function claudeConfigRevealTarget(): string {
+  const targets = claudeWriteTargets();
+  return (
+    targets.find((p) => fs.existsSync(p) && claudeEchoRegistered(readJson(p))) ??
+    targets.find((p) => fs.existsSync(p)) ??
+    targets[0]
+  );
+}
+
 export function chatgptCodexConfigPath(): string {
   const home = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
   return path.join(home, "config.toml");
@@ -38,16 +80,15 @@ export function connectStatus(): {
   chatgptRegistered: boolean;
 } {
   const cursorPath = cursorMcpPath();
-  const claudePath = claudeDesktopConfigPath();
+  const claudePaths = claudeDesktopConfigPaths();
   const gptPath = chatgptCodexConfigPath();
   const cursor = readJson(cursorPath);
-  const claude = readJson(claudePath);
   const gpt = fs.existsSync(gptPath) ? fs.readFileSync(gptPath, "utf8") : "";
   return {
     cursorConfigExists: fs.existsSync(cursorPath),
     cursorRegistered: Boolean(cursor?.mcpServers?.[SERVER_NAME] || cursor?.mcpServers?.[LEGACY_SERVER_NAME]),
-    claudeConfigExists: fs.existsSync(claudePath),
-    claudeRegistered: Boolean(claude?.mcpServers?.[SERVER_NAME] || claude?.mcpServers?.[LEGACY_SERVER_NAME]),
+    claudeConfigExists: claudePaths.some((p) => fs.existsSync(p)),
+    claudeRegistered: claudePaths.some((p) => claudeEchoRegistered(readJson(p))),
     chatgptConfigExists: fs.existsSync(gptPath),
     chatgptRegistered: /\[mcp_servers\.echo\]/.test(gpt) || /\[mcp_servers\.local-browser\]/.test(gpt),
   };
@@ -82,37 +123,64 @@ export function registerCursor(token: string): ConnectResult {
   }
 }
 
-export function registerClaudeDesktop(token: string): ConnectResult {
-  const file = claudeDesktopConfigPath();
-  try {
-    const json = readJson(file) ?? { mcpServers: {} };
-    if (!json.mcpServers || typeof json.mcpServers !== "object") {
-      json.mcpServers = {};
-    }
-    backup(file);
-    const entry = claudeLaunchEntry(mcpUrl(), token);
-    json.mcpServers[SERVER_NAME] = entry;
-    if (json.mcpServers[LEGACY_SERVER_NAME]) {
-      json.mcpServers[LEGACY_SERVER_NAME] = entry;
-    }
-    writeJson(file, json);
-    const bridge = packagedBridgeLaunch();
-    const node = findNode();
-    let message: string;
-    if (bridge) {
-      message =
-        "Saved Claude config using Echo itself (no Node.js needed). Next: 1) Keep Echo running. 2) Fully quit Claude Desktop — Cmd+Q on Mac, right-click the tray icon → Exit on Windows (closing the chat window is not enough). 3) Open Claude again. 4) In Claude go to Settings → Developer → Local MCP servers and confirm “echo” is listed. The hammer icon in chat means MCP is active.";
-    } else if (node) {
-      message =
-        "Saved Claude config. Keep Echo running, fully quit Claude Desktop (not just the window), reopen Claude, then check Settings → Developer → Local MCP servers for “echo”.";
-    } else {
-      message =
-        "Saved Claude config, but Node.js was not found. Install Node from nodejs.org and click Connect again — or install Echo from the GitHub Release (.exe / .dmg) which does not need Node.";
-    }
-    return { ok: true, message, path: file };
-  } catch (err) {
-    return { ok: false, message: errorMessage(err) };
+function writeClaudeConfig(file: string, entry: ClaudeLaunchEntry): void {
+  const json = readJson(file) ?? { mcpServers: {} };
+  if (!json.mcpServers || typeof json.mcpServers !== "object") {
+    json.mcpServers = {};
   }
+  backup(file);
+  json.mcpServers[SERVER_NAME] = entry;
+  if (json.mcpServers[LEGACY_SERVER_NAME]) {
+    json.mcpServers[LEGACY_SERVER_NAME] = entry;
+  }
+  writeJson(file, json);
+}
+
+export function registerClaudeDesktop(token: string): ConnectResult {
+  const targets = claudeWriteTargets();
+  const entry = claudeLaunchEntry(mcpUrl(), token);
+  const written: string[] = [];
+  const errors: string[] = [];
+  for (const file of targets) {
+    try {
+      writeClaudeConfig(file, entry);
+      if (!claudeEchoRegistered(readJson(file))) {
+        errors.push(`${file}: wrote file but echo block missing after verify`);
+        continue;
+      }
+      written.push(file);
+    } catch (err) {
+      errors.push(`${file}: ${errorMessage(err)}`);
+    }
+  }
+  if (written.length === 0) {
+    return { ok: false, message: errors.join(" · ") || "Could not write Claude config." };
+  }
+
+  const msixWritten = written.filter((p) => p.includes(`${path.sep}Packages${path.sep}Claude_`));
+  const bridge = packagedBridgeLaunch();
+  const node = findNode();
+  const pathLines = written.map((p) => `· ${p}`).join("\n");
+  let steps: string;
+  if (bridge) {
+    steps =
+      "Saved Claude config using Echo itself (no Node.js needed). Next: 1) Keep Echo running. 2) In Claude open the menu → Settings → Developer → Edit Config and confirm an “echo” block exists (Local MCP servers may stay empty until Claude reloads). 3) Fully quit Claude — Cmd+Q on Mac, tray icon → Exit on Windows (closing the chat window is not enough). 4) Reopen Claude and check Settings → Developer → Local MCP servers for “echo”. The hammer icon in chat means MCP is active.";
+  } else if (node) {
+    steps =
+      "Saved Claude config. Keep Echo running, use Claude → Settings → Developer → Edit Config to confirm “echo”, fully quit Claude (tray Exit, not just the window), reopen, then check Local MCP servers.";
+  } else {
+    steps =
+      "Saved Claude config, but Node.js was not found. Install Node from nodejs.org and click Connect again — or install Echo from the GitHub Release (.exe / .dmg) which does not need Node.";
+  }
+  let message = `${steps}\n\nConfig verified at:\n${pathLines}`;
+  if (msixWritten.length) {
+    message +=
+      "\n\nNote: Claude looks installed from the Microsoft Store. Echo wrote the Store copy too — Edit Config in Claude should show the same echo block.";
+  }
+  if (errors.length) {
+    message += `\n\nSome paths failed: ${errors.join(" · ")}`;
+  }
+  return { ok: true, message, path: written[0], paths: written };
 }
 
 export function registerChatGpt(token: string): ConnectResult {

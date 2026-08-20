@@ -104,6 +104,7 @@ export type ConnectResult = {
   ok: boolean;
   message: string;
   path?: string;
+  paths?: string[];
 };
 
 export type PlayResult = {

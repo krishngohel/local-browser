@@ -407,6 +407,13 @@ body.settings-open .shell {
   align-self: flex-start;
 }
 
+.card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .card h3 {
   margin: 0 0 2px;
   font-size: 14px;

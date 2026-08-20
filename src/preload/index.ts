@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("lb", {
   search: (query: string) => ipcRenderer.invoke("search", query),
   connectCursor: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:cursor"),
   connectClaude: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:claude"),
+  revealClaudeConfig: (): Promise<string> => ipcRenderer.invoke("connect:reveal-claude-config"),
   connectChatGpt: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:chatgpt"),
   connectSnippets: (): Promise<ConnectSnippets> => ipcRenderer.invoke("connect:snippets"),
   copyText: (text: string) => ipcRenderer.invoke("clipboard:write", text),

@@ -105,10 +105,13 @@
                 <h3>Claude Desktop</h3>
                 <p class="meta" id="claude-status">Not connected</p>
                 <p class="help">
-                  Connect writes Claude’s config, then you must <strong>fully quit</strong> Claude (Cmd+Q on Mac, Exit from tray on Windows) and reopen it. Echo must stay running. Do not use “Add custom connector”. Check Settings → Developer → Local MCP servers.
+                  Connect writes Claude’s config, then you must <strong>fully quit</strong> Claude (Cmd+Q on Mac, tray → Exit on Windows) and reopen it. Echo must stay running. Do not use “Add custom connector”. Open Claude menu → Settings → Developer → <strong>Edit Config</strong> to confirm the <code>echo</code> block exists; then check <strong>Local MCP servers</strong> after restart.
                 </p>
               </div>
+              <div class="card-actions">
               <button class="chrome-btn" id="connect-claude">Connect</button>
+              <button class="chrome-btn" type="button" id="reveal-claude-config">Show config file</button>
+              </div>
             </div>
             <div class="card">
               <div>

@@ -14,6 +14,7 @@ declare global {
       search: (query: string) => Promise<void>;
       connectCursor: () => Promise<ConnectResult>;
       connectClaude: () => Promise<ConnectResult>;
+      revealClaudeConfig: () => Promise<string>;
       connectChatGpt: () => Promise<ConnectResult>;
       connectSnippets: () => Promise<ConnectSnippets>;
       copyText: (text: string) => Promise<void>;

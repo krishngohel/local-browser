@@ -215,7 +215,7 @@ function label(app: "cursor" | "claude" | "chatgpt", live: boolean, registered: 
   if (live) return "Connected now";
   if (registered) {
     if (app === "cursor") return "Saved in Cursor — not connected. Open Cursor and enable echo in Settings → MCP.";
-    if (app === "claude") return "Saved in Claude — not connected yet. Fully quit Claude (Cmd+Q / tray Exit), keep Echo running, reopen Claude.";
+    if (app === "claude") return "Saved in Claude — not connected yet. Open Claude → Settings → Developer → Edit Config, confirm echo exists, fully quit Claude (Cmd+Q / tray Exit), keep Echo running, reopen Claude.";
     return "Saved in Codex — not connected. Fully quit and reopen ChatGPT desktop or Codex.";
   }
   if (exists) return "Found a config file — click Connect to add Echo";
@@ -367,6 +367,11 @@ document.getElementById("connect-claude")!.addEventListener("click", async () =>
   const result = await window.lb.connectClaude();
   connectNote.textContent = result.message;
   render(await window.lb.getState());
+});
+
+document.getElementById("reveal-claude-config")!.addEventListener("click", async () => {
+  const target = await window.lb.revealClaudeConfig();
+  connectNote.textContent = `Opened folder for ${target}`;
 });
 
 document.getElementById("connect-chatgpt")!.addEventListener("click", async () => {

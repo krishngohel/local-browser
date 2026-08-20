@@ -12,7 +12,7 @@ import {
 import path from "node:path";
 import fs from "node:fs";
 import { BrowserHub } from "./browser";
-import { connectSnippets, connectStatus, registerChatGpt, registerClaudeDesktop, registerCursor } from "./connect-clients";
+import { connectSnippets, connectStatus, claudeConfigRevealTarget, registerChatGpt, registerClaudeDesktop, registerCursor } from "./connect-clients";
 import { startMcpHttp } from "./mcp-http";
 import { mcpLiveStatus, setMcpSessionListener } from "./mcp-sessions";
 import { registerTools } from "../mcp/register-tools";
@@ -271,6 +271,16 @@ function registerIpc(): void {
   });
   ipcMain.handle("connect:cursor", () => registerCursor(token));
   ipcMain.handle("connect:claude", () => registerClaudeDesktop(token));
+  ipcMain.handle("connect:reveal-claude-config", async () => {
+    const target = claudeConfigRevealTarget();
+    if (fs.existsSync(target)) {
+      shell.showItemInFolder(target);
+    } else {
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      await shell.openPath(path.dirname(target));
+    }
+    return target;
+  });
   ipcMain.handle("connect:chatgpt", () => registerChatGpt(token));
   ipcMain.handle("connect:snippets", () => connectSnippets(token));
   ipcMain.handle("clipboard:write", (_e, text: string) => {
