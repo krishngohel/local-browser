@@ -6,7 +6,7 @@ There is no model API and no cloud Chromium. The browser window you see is the o
 
 ---
 
-## Quick start (for your friend)
+## Quick start
 
 1. **Install Echo** on your computer (Windows, Mac, or Linux — see below).
 2. **Leave Echo running.** Closing the window hides it; it keeps running in the tray (Windows/Linux) or menu bar (Mac).
