@@ -1,95 +1,196 @@
 # Echo
 
-Installable desktop browser that runs on your computer and exposes an **MCP server**. Cursor, Claude Desktop, Continue, Cline, Windsurf, VS Code, and other MCP clients can drive it with your existing subscription. There is no model API and no cloud Chromium.
+**Echo** is a desktop browser that runs on your computer. It exposes an **MCP server** so Cursor, Claude Desktop, ChatGPT/Codex, Continue, Cline, Windsurf, VS Code, and other MCP clients can drive it with your existing subscription.
 
-## Install
+There is no model API and no cloud Chromium. The browser window you see is the one the assistant controls.
 
-Download the installer for your computer from [GitHub Releases](https://github.com/krishngohel/local-browser/releases) (or run `npm run dist` on that OS).
+---
 
-### Windows
+## Quick start (for your friend)
 
-1. Open `Echo-Setup-1.0.0-x64.exe`. SmartScreen may warn because the build is **unsigned** — choose **More info** → **Run anyway**.
-2. Finish the wizard. Shortcuts are added to the Desktop and Start Menu.
-3. Leave Echo running (closing the window hides it to the tray). Open **Settings** (⋮) → **Connections**.
+1. **Install Echo** on your computer (Windows, Mac, or Linux — see below).
+2. **Leave Echo running.** Closing the window hides it; it keeps running in the tray (Windows/Linux) or menu bar (Mac).
+3. Open **Settings** (⋮ menu, top right) → **Connections**.
+4. Click **Connect** for Cursor, Claude, or ChatGPT/Codex.
+5. **Fully quit and reopen** that AI app so it picks up Echo.
+6. Ask the assistant to search the web or open a page — it should use Echo’s tools (`navigate`, `snapshot`, `search_web`, etc.).
 
-Uninstall from Windows Settings → Apps. Your profile stays in `%APPDATA%\Echo` unless you delete that folder.
+MCP URL on the same computer: `http://127.0.0.1:18931/mcp`  
+Server name: `echo`  
+A bearer token is shown in Settings → Connections (Echo creates it on first launch).
 
-### Mac
+---
 
-1. Open `Echo-1.0.0-mac-universal.dmg` (Apple Silicon and Intel).
-2. Drag Echo to **Applications**. Do not keep running it from the disk image.
-3. Eject the disk image, then open Echo from Applications.
-4. First launch is blocked because the build is **unsigned** (no Apple Developer ID yet):
-   - Right-click Echo → **Open** → **Open**.
-   - On macOS Sequoia or later, if that is missing: **System Settings → Privacy & Security → Open Anyway**.
-5. Leave Echo running. Closing the red traffic-light button hides the window; Echo stays in the Dock and the menu bar. Quit from the **Echo** menu, **Cmd+Q**, or the menu-bar icon.
-6. Open **Settings → Connections**. Install [Node.js](https://nodejs.org) if you will use **Connect Claude Desktop** (Claude launched from the Dock cannot see Homebrew on PATH unless Echo writes an absolute Node path).
+## Download
 
-Profile: `~/Library/Application Support/Echo`.
+**Installers:** [GitHub Releases](https://github.com/krishngohel/local-browser/releases)
 
-GitHub only publishes the `.dmg` when a `v*` tag is pushed (for example `v1.0.0`). A manual **Run workflow** builds artifacts you can download from the Actions run; it does not create a Release.
+Pick the file for your OS:
 
-### Linux
+| Your computer | Download this file |
+| --- | --- |
+| Windows (64-bit) | `Echo-Setup-1.0.0-x64.exe` |
+| Mac (Apple Silicon or Intel) | `Echo-1.0.0-mac-universal.dmg` |
+| Linux (64-bit) | `Echo-1.0.0-linux-x64.AppImage` |
 
-1. Make `Echo-1.0.0-linux-x64.AppImage` executable and run it.
-2. Leave Echo running (tray). Open **Settings** → **Connections**.
+If the Releases page is empty, the maintainer needs to publish a version tag (for example `v1.0.0`) so GitHub Actions builds the installers. Until then, use [Run from source](#run-from-source-developers) below.
 
-On this computer the MCP URL is `http://127.0.0.1:18931/mcp` (127.0.0.1 always means the machine running Echo). Echo also shows **this computer’s current Wi-Fi/Ethernet address** in Settings for other devices on the same network. Bearer token required. MCP server name: `echo`.
+**Repo:** https://github.com/krishngohel/local-browser
 
-The skill tree in [skills/ECHO-SKILL-TREE.md](skills/ECHO-SKILL-TREE.md) is sent to the model automatically when an MCP client connects. You only need to paste it if a client ignores server instructions.
+---
 
-## Run from source
+## Install — Windows
 
-Requires Node.js 20+.
+1. Download `Echo-Setup-1.0.0-x64.exe` from [Releases](https://github.com/krishngohel/local-browser/releases).
+2. Run the installer. **Windows SmartScreen** may warn because the build is unsigned:
+   - Click **More info** → **Run anyway**.
+3. Finish the wizard. Echo installs to `%LOCALAPPDATA%\Programs\Echo\` and adds Desktop + Start Menu shortcuts.
+4. Echo opens when setup finishes. **Leave it running.**
+5. Closing the window **does not quit Echo** — it hides to the **system tray** (by the clock). Right-click the Echo icon there to **Show** or **Quit**.
+
+**Open Settings:** click the **⋮** menu (top right) → Connections.
+
+**Uninstall:** Windows Settings → Apps → Echo. Your browsing profile stays in `%APPDATA%\Echo` unless you delete that folder manually.
+
+---
+
+## Install — Mac
+
+1. Download `Echo-1.0.0-mac-universal.dmg` from [Releases](https://github.com/krishngohel/local-browser/releases).
+2. Open the `.dmg`. Drag **Echo** to **Applications**.
+3. **Eject the disk image.** Do not keep using Echo from the mounted `.dmg` — it will stop working after eject. Echo warns you if you launch from the disk image.
+4. Open Echo from **Applications**.
+5. **First launch — Gatekeeper:** the app is unsigned (no Apple Developer ID yet). macOS blocks a normal double-click:
+   - **Right-click Echo** → **Open** → **Open**.
+   - On macOS Sequoia or later, if needed: **System Settings → Privacy & Security → Open Anyway**.
+6. **Leave Echo running.** The red close button **hides** the window; Echo stays in the **Dock** and **menu bar** (top right).
+   - Show again: click the Dock icon, menu-bar icon, or **Echo → Show Echo**.
+   - Quit: **Echo → Quit Echo**, **Cmd+Q**, or menu-bar icon → Quit.
+
+**Open Settings:** ⋮ menu → Connections.
+
+**If you use Claude Desktop:** install [Node.js](https://nodejs.org) (LTS) from nodejs.org. Claude launched from the Dock cannot see Homebrew’s PATH; Echo writes Node’s full path when you click Connect.
+
+**Profile folder:** `~/Library/Application Support/Echo`
+
+**Firewall (optional):** if another device on your Wi-Fi cannot connect, allow Echo in **System Settings → Network → Firewall**.
+
+---
+
+## Install — Linux
+
+1. Download `Echo-1.0.0-linux-x64.AppImage` from [Releases](https://github.com/krishngohel/local-browser/releases).
+2. Make it executable and run it:
 
 ```bash
+chmod +x Echo-1.0.0-linux-x64.AppImage
+./Echo-1.0.0-linux-x64.AppImage
+```
+
+3. **Leave Echo running** (system tray). Open **Settings → Connections** from the ⋮ menu.
+
+**Profile folder:** `~/.config/Echo` (or the Electron userData path for the packaged app).
+
+**Firewall (optional):** allow TCP port **18931** (or the port shown in Settings) if another device on your LAN needs to connect.
+
+---
+
+## Connect your AI
+
+Echo must be **running** before you connect. Open **Settings** (⋮) → **Connections**.
+
+The green dot next to **MCP server** means Echo is listening. Copy the **This computer** URL if you need it manually: `http://127.0.0.1:18931/mcp`.
+
+### Cursor
+
+1. In Echo: click **Connect** under Cursor.
+2. Echo writes `~/.cursor/mcp.json` (backs up any existing file to `mcp.json.bak`).
+3. In Cursor: **Settings → MCP** — enable `echo` if it shows as disabled.
+4. Start a new chat. The assistant should see Echo tools (`navigate`, `snapshot`, `search_web`, …).
+
+### Claude Desktop
+
+1. Install [Node.js](https://nodejs.org) if you do not have it (required for Claude’s stdio bridge).
+2. In Echo: click **Connect** under Claude Desktop.
+3. Echo writes Claude’s config:
+   - Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
+   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+   - Linux: `~/.config/Claude/claude_desktop_config.json`
+4. **Fully quit Claude Desktop** (not just close the window) and reopen it.
+5. In Claude: **Settings → Developer → Local MCP servers** — confirm `echo` appears.
+
+**Do not** use Claude’s “Add custom connector” for Echo — that is for public HTTPS servers. Use **Connect** in Echo and **Local MCP servers** in Claude.
+
+### ChatGPT / Codex desktop
+
+1. In Echo: click **Connect** under ChatGPT / Codex.
+2. Echo writes `~/.codex/config.toml` (backs up to `config.toml.bak`).
+3. **Fully quit and reopen** ChatGPT desktop or Codex.
+
+**Note:** chatgpt.com in a normal browser **cannot** reach Echo on your computer unless you set up your own HTTPS tunnel.
+
+### Any other MCP client
+
+On the same Settings page, copy one of:
+
+- **HTTP (this computer)** — Cursor, Continue, Cline, Windsurf, VS Code, etc.
+- **stdio (this computer)** — clients that only support command-based MCP.
+- **This network** — if the AI client runs on another device on your Wi-Fi (uses your computer’s LAN IP; still needs the bearer token).
+
+Paste the JSON/TOML into that client’s MCP config. Include the `Authorization: Bearer …` header exactly as shown.
+
+---
+
+## Verify it works
+
+1. Echo is running (tray / menu bar).
+2. Settings → Connections shows **MCP server** as listening.
+3. Your AI app was **fully restarted** after Connect.
+4. Ask something like: *“Search Google for Echo browser MCP and open the first result in Echo.”*
+
+The assistant should call tools such as `search_web`, `navigate`, and `snapshot`. If tools are missing, check that `echo` is enabled in the client’s MCP settings and reconnect.
+
+**Captcha / login / 2FA:** complete it in the Echo window yourself. Tell the assistant to `wait_for` and then continue.
+
+---
+
+## Day-to-day use
+
+| Action | Windows / Linux | Mac |
+| --- | --- | --- |
+| Hide window | Close window (stays in tray) | Red button (stays in Dock + menu bar) |
+| Show Echo again | Tray icon → Show | Dock or menu-bar icon |
+| Quit completely | Tray → Quit | Echo menu → Quit, or Cmd+Q |
+| Open Settings | ⋮ menu | ⋮ menu |
+| New tab | Ctrl+T | Cmd+T |
+| Focus address bar | Ctrl+L | Cmd+L |
+
+**Open at login:** Settings → System → **Open at login** (starts hidden in the background).
+
+**Downloads, screenshots, recordings:** Settings → System → **Open folder**.
+
+**Token usage:** Settings → Transfers — turn off page photos, watch frames, or the skill tree on connect if you want fewer tokens. Reconnect the AI client after changing tool groups.
+
+---
+
+## Run from source (developers)
+
+Requires **Node.js 20+**.
+
+```bash
+git clone https://github.com/krishngohel/local-browser.git
+cd local-browser
 npm install
 npm run dev
 ```
 
-`npm run dev` compiles TypeScript and opens the Electron window. Playwright talks to this same Chromium over CDP (port 9333). You do not need a second browser install for everyday use.
+This compiles the app and opens the Electron window. Playwright connects to the same Chromium over CDP (port 9333). You do not need a separate browser install.
 
-On Windows, after `npm run dist`, `npm run start-menu` adds Echo to this user’s Start Menu without running the NSIS wizard.
-
-## Connect
-
-1. Leave Echo running (tray on Windows/Linux, menu bar on Mac).
-2. Open **Settings** (⋮ menu) → **Connections**.
-3. **Connect Cursor** writes `~/.cursor/mcp.json` using `http://127.0.0.1:18931/mcp` (backs up any existing file to `mcp.json.bak`). Enable `echo` in Cursor Settings → MCP if it shows as disabled.
-4. **Connect Claude Desktop** writes the Claude config for this OS (`%APPDATA%\Claude\…` on Windows, `~/Library/Application Support/Claude/…` on Mac, `~/.config/Claude/…` on Linux) using Node + `mcp-remote`. Echo launches Node by full path so Claude started from the Dock/Start Menu still works. Install [Node.js](https://nodejs.org) if Connect warns it is missing. Fully quit and reopen Claude Desktop.
-5. **Connect ChatGPT / Codex** writes `~/.codex/config.toml` (backs up to `config.toml.bak`). ChatGPT desktop, Codex CLI, and the Codex IDE extension share that file. Fully quit and reopen ChatGPT/Codex. **chatgpt.com in a browser cannot reach Echo** unless you expose it with your own HTTPS tunnel.
-6. **Any other AI** — copy the HTTP, stdio, or VS Code JSON from the same Settings page. Use the **This computer** snippet if the client runs on this computer. Use the **This network** snippet (detected LAN IP) if the client runs on another device on your Wi-Fi.
-
-Do not skip the Connect buttons for Cursor/Claude. The app will not silently rewrite other people’s MCP configs. The URLs are generated on **this** machine; they are not hardcoded to a developer’s IP.
-
-## Recordings
-
-Click the red **record** button in the toolbar (or Settings → Recordings), or have the assistant call `record_start`. Echo logs your clicks and typing **and** Cursor/Claude MCP tools (`navigate`, `click`, `type`, and the rest) on this computer. **Play** runs the saved steps in order with no LLM. Files live in the app userData `recordings/` folder.
-
-Assistants can use `record_start`, `record_stop`, `recordings_list`, `recording_play`, and `recording_delete`.
-
-## Agent tools
-
-Browse: `tabs_list`, `tabs_new`, `tabs_close`, `tabs_select`, `navigate`, `back`, `reload`, `snapshot`, `screenshot`, `watch`, `click`, `type`, `fill`, `press`, `scroll`, `select`, `wait_for`
-
-Search / extract: `search_web` (Google), `extract_readable`
-
-Observe: `console_errors`, `network_failures`
-
-Test: `viewport_set`, `test_start`, `test_assert_text`, `test_assert_url`, `test_end` (reports under the app userData `runs/` folder)
-
-Record: `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
-
-Call `snapshot` before `click` / `type` / `fill`. Snapshot refs look like `e0`, `e1`. `snapshot` and `screenshot` return a photograph of the page. `watch` returns a short live feed (ordered frames) so assistants can see animations and motion.
-
-## Build installers
+**Build an installer on your machine:**
 
 ```bash
-npm install
 npm run dist
 ```
-
-Builds the installer for **the OS you are on**:
 
 | OS | Output |
 | --- | --- |
@@ -97,9 +198,85 @@ Builds the installer for **the OS you are on**:
 | Mac | `dist-installer/Echo-1.0.0-mac-universal.dmg` |
 | Linux | `dist-installer/Echo-1.0.0-linux-x64.AppImage` |
 
-GitHub Actions (`.github/workflows/release.yml`) builds all three on `v*` tags. You cannot produce a Mac `.dmg` from Windows — that job runs on `macos-latest`.
+You cannot build a Mac `.dmg` from Windows — that requires a Mac or GitHub Actions on `macos-latest`.
 
-Mac and Windows installers are unsigned unless you add signing secrets. On Mac, first open with right-click → Open (or Privacy & Security → Open Anyway). On Windows, use SmartScreen **More info** → **Run anyway**.
+On Windows, after `npm run dist`, `npm run start-menu` adds Echo to the Start Menu without rerunning the installer wizard.
+
+---
+
+## Troubleshooting
+
+### “Echo is already running”
+
+Only one Echo instance should run (MCP port conflict). Find Echo in the tray (Windows/Linux) or menu bar (Mac). Quit from there, then open Echo once.
+
+### Cursor / Claude does not see Echo
+
+- Echo must be running before the AI app starts (or restart the AI app after Echo is up).
+- Click **Connect** again in Settings → Connections.
+- **Fully quit** Cursor or Claude (not just close the chat window), then reopen.
+- Cursor: Settings → MCP → enable `echo`.
+- Claude: use **Local MCP servers**, not “Add custom connector”.
+
+### Claude says Node.js is missing
+
+Install Node from https://nodejs.org, then click **Connect** again in Echo so it writes the correct path.
+
+### Mac: “Echo cannot be opened” / “damaged”
+
+Right-click → **Open**, or System Settings → Privacy & Security → **Open Anyway**. This is normal for unsigned apps.
+
+### Mac: opened from the disk image
+
+Drag Echo to Applications, eject the `.dmg`, open from Applications.
+
+### SmartScreen / Gatekeeper warnings
+
+Installers are **unsigned** until an code-signing certificate is added. Use the steps above — the app is built from this repo’s GitHub Actions.
+
+### Google shows captcha or consent
+
+Complete it in the Echo window. Ask the assistant to wait (`wait_for`) and retry.
+
+### Another device on Wi-Fi cannot connect
+
+Use the **This network** URL and token from Settings. Allow Echo through the host computer’s firewall on private networks. Do not share the token publicly.
+
+### MCP port in use
+
+Echo prefers port **18931** and tries **18931–18940**. Port 8931 is avoided (Playwright MCP default). Check Settings for the actual URL.
+
+---
+
+## What Echo gives an assistant
+
+On connect, Echo sends a **skill tree** (how to browse, search, screenshot, record, etc.) unless you turn that off in Settings → Transfers.
+
+**Browse:** `tabs_list`, `tabs_new`, `tabs_close`, `tabs_select`, `navigate`, `back`, `reload`, `snapshot`, `screenshot`, `watch`, `click`, `type`, `fill`, `press`, `scroll`, `select`, `wait_for`
+
+**Search / extract:** `search_web`, `extract_readable`
+
+**Debug:** `console_errors`, `network_failures`
+
+**Test:** `viewport_set`, `test_start`, `test_assert_text`, `test_assert_url`, `test_end`
+
+**Record / replay:** `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
+
+Always **`snapshot` before `click` / `type` / `fill`**. Refs look like `e0`, `e1`.
+
+Full guide: [skills/ECHO-SKILL-TREE.md](skills/ECHO-SKILL-TREE.md)
+
+---
+
+## Security (read this)
+
+- Anything you **log into** in Echo is visible to a **connected assistant** while MCP is connected.
+- MCP listens on this computer and your LAN (`0.0.0.0:18931`, or the next free port). Same-machine clients should use `127.0.0.1`.
+- A **bearer token** protects the MCP server. Echo writes it into Cursor/Claude config when you Connect. Do not post the token online.
+- Echo uses a **separate profile** from your daily Chrome — not your normal browser cookies.
+- Downloads: app data folder → `downloads/`. Recordings: `recordings/`.
+
+---
 
 ## Legal
 
@@ -107,35 +284,19 @@ Mac and Windows installers are unsigned unless you add signing secrets. On Mac, 
 - [Terms of Service](legal/TERMS.md)
 - [MIT License](LICENSE)
 
-The same documents are in the app under **Settings → About**, **Privacy**, and **Terms**.
+Also in the app: **Settings → About**, **Privacy**, **Terms**.
 
-## Security
+---
 
-- MCP listens on all interfaces (`0.0.0.0:18931`, or the next free port up to +9) so this computer’s LAN address can connect. Same-machine clients should still use `http://127.0.0.1:18931/mcp`. Port 8931 is avoided because Playwright MCP uses it.
-- A bearer token is created on first launch (`userData/mcp-token.txt`) and written into Cursor/Claude config headers. Other clients need the same `Authorization: Bearer …` header.
-- On connect, Echo sends the skill tree as MCP `instructions`, plus a resource, a prompt, and `echo_help`.
-- Profile is isolated (`persist:local-browser`), not your daily Chrome.
-- Downloads go to the app userData `downloads/` folder.
-- Recordings stay in `recordings/` on this computer.
-- Anything you log into in this window is visible to the connected agent.
-- For captcha / 2FA, complete it in the window; ask the agent to `wait_for`.
-- If another device cannot connect, allow Echo through this computer’s firewall on private networks. Do not share the token.
+## Build / release (maintainers)
 
-The browsing session identifies as **Google Chrome** on this OS (Chromium 136 in Electron 36): Chrome user-agent, `Sec-CH-UA` brands (`Google Chrome` + `Chromium`), no `Electron` in the UA. Sites that only allow Chrome should treat this like Chrome. `navigator.webdriver` automation is disabled via `AutomationControlled`.
+GitHub Actions (`.github/workflows/release.yml`) builds Windows, Mac, and Linux installers on **`v*` tags** (for example `git tag v1.0.0 && git push origin v1.0.0`). Manual **Run workflow** uploads artifacts to the Actions run but does not create a Release page.
 
-If Google shows a consent or captcha screen, complete it in the window; agents should `wait_for`.
-
-## Scripts
+Mac and Windows builds are unsigned unless signing secrets are configured.
 
 | Script | What it does |
 | --- | --- |
 | `npm run dev` | Build + run unpackaged |
-| `npm run build` | Compile (with source maps) |
-| `npm run build:prod` | Minified compile for the installer |
 | `npm run dist` | Installer for this OS |
-| `npm run dist:win` | Windows NSIS only |
-| `npm run dist:mac` | Mac DMG only (must run on a Mac) |
-| `npm run dist:linux` | Linux AppImage only |
-| `npm run icon` | Write `build/icon.png` (any OS; skips if a real icon already exists unless you pass `--force` via this script) |
-| `npm run packaging:check` | Confirm installer assets exist before `electron-builder` |
-| `npm run start-menu` | Add Echo to this user’s Start Menu (Windows) |
+| `npm run dist:win` / `dist:mac` / `dist:linux` | Single-platform installer |
+| `npm run packaging:check` | Verify icon, legal files, Mac entitlements before build |
