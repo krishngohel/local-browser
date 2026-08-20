@@ -1,6 +1,6 @@
 {
   "name": "local-browser",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Echo — local Chrome-compatible browser with MCP for any AI client",
   "main": "out/main/index.js",
   "author": "Echo contributors",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "mcp-remote": "^0.1.38",
     "playwright-core": "^1.62.1",
     "zod": "^3.25.0"
   },
@@ -59,6 +60,14 @@
       {
         "from": "build/icon.png",
         "to": "icon.png"
+      },
+      {
+        "from": "out/resources/echo-mcp-bridge.cjs",
+        "to": "echo-mcp-bridge.cjs"
+      },
+      {
+        "from": "out/resources/mcp-remote",
+        "to": "mcp-remote"
       },
       {
         "from": "legal",

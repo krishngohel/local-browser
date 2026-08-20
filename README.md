@@ -110,16 +110,25 @@ The green dot next to **MCP server** means Echo is listening. Copy the **This co
 
 ### Claude Desktop
 
-1. Install [Node.js](https://nodejs.org) if you do not have it (required for Claude’s stdio bridge).
-2. In Echo: click **Connect** under Claude Desktop.
-3. Echo writes Claude’s config:
+**Connect does not hot-plug.** Echo writes a config file; Claude only reads it on startup.
+
+1. In Echo: click **Connect** under Claude Desktop (Echo must be running).
+2. Echo writes Claude’s config:
    - Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
    - Linux: `~/.config/Claude/claude_desktop_config.json`
-4. **Fully quit Claude Desktop** (not just close the window) and reopen it.
-5. In Claude: **Settings → Developer → Local MCP servers** — confirm `echo` appears.
+3. **Fully quit Claude Desktop** — this is the step most people miss:
+   - Mac: **Cmd+Q** (closing the red button is not enough)
+   - Windows: right-click Claude in the **system tray** → **Exit**
+4. **Keep Echo running** (tray / menu bar).
+5. Open Claude again.
+6. In Claude: **Settings → Developer → Local MCP servers** — confirm `echo` is listed. A **hammer icon** in chat means MCP tools are active.
 
-**Do not** use Claude’s “Add custom connector” for Echo — that is for public HTTPS servers. Use **Connect** in Echo and **Local MCP servers** in Claude.
+**Packaged Echo (v1.0.1+)** uses Echo itself as the bridge — **Node.js is not required**.
+
+**Do not** use Claude’s “Add custom connector” — that is for public HTTPS servers only.
+
+If it still fails, see [Claude will not connect](#claude-will-not-connect) below.
 
 ### ChatGPT / Codex desktop
 
@@ -210,7 +219,20 @@ On Windows, after `npm run dist`, `npm run start-menu` adds Echo to the Start Me
 
 Only one Echo instance should run (MCP port conflict). Find Echo in the tray (Windows/Linux) or menu bar (Mac). Quit from there, then open Echo once.
 
-### Cursor / Claude does not see Echo
+### Claude will not connect
+
+Connect **saves a file** — it does not restart Claude for you.
+
+1. **Echo must be running** when Claude starts (tray on Windows, menu bar on Mac).
+2. **Fully quit Claude**, not just close the chat window:
+   - Mac: **Cmd+Q**
+   - Windows: tray icon → **Exit**
+3. Reopen Claude. Check **Settings → Developer → Local MCP servers** for `echo`.
+4. In Echo Settings → Connections, status should change from “Saved in Claude” to **Connected now** (green) once Claude’s bridge is live.
+5. On **v1.0.0**, install [Node.js](https://nodejs.org) and click Connect again. **v1.0.1+** does not need Node — update from [Releases](https://github.com/krishngohel/local-browser/releases).
+6. Claude logs (if needed): Mac `~/Library/Logs/Claude/`, Windows `%APPDATA%\Claude\logs\`.
+
+### Cursor / Claude does not see Echo (general)
 
 - Echo must be running before the AI app starts (or restart the AI app after Echo is up).
 - Click **Connect** again in Settings → Connections.

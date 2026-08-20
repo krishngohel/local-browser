@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { app } from "electron";
 import { mcpUrl, mcpUrlForHost, userDataDir } from "./paths";
 import { lanIPv4s } from "./net";
 import type { ConnectResult, ConnectSnippets } from "../shared/types";
@@ -89,19 +90,26 @@ export function registerClaudeDesktop(token: string): ConnectResult {
       json.mcpServers = {};
     }
     backup(file);
-    json.mcpServers[SERVER_NAME] = stdioLaunch(mcpUrl(), token);
+    const entry = claudeLaunchEntry(mcpUrl(), token);
+    json.mcpServers[SERVER_NAME] = entry;
     if (json.mcpServers[LEGACY_SERVER_NAME]) {
-      json.mcpServers[LEGACY_SERVER_NAME] = json.mcpServers[SERVER_NAME];
+      json.mcpServers[LEGACY_SERVER_NAME] = entry;
     }
     writeJson(file, json);
+    const bridge = packagedBridgeLaunch();
     const node = findNode();
-    return {
-      ok: true,
-      message: node
-        ? "Wrote Claude Desktop config. Fully quit and reopen Claude Desktop so it picks up the MCP server."
-        : "Wrote Claude Desktop config, but Node.js was not found on this computer. Install Node from nodejs.org, then click Connect again so Claude can start Echo.",
-      path: file,
-    };
+    let message: string;
+    if (bridge) {
+      message =
+        "Saved Claude config using Echo itself (no Node.js needed). Next: 1) Keep Echo running. 2) Fully quit Claude Desktop — Cmd+Q on Mac, right-click the tray icon → Exit on Windows (closing the chat window is not enough). 3) Open Claude again. 4) In Claude go to Settings → Developer → Local MCP servers and confirm “echo” is listed. The hammer icon in chat means MCP is active.";
+    } else if (node) {
+      message =
+        "Saved Claude config. Keep Echo running, fully quit Claude Desktop (not just the window), reopen Claude, then check Settings → Developer → Local MCP servers for “echo”.";
+    } else {
+      message =
+        "Saved Claude config, but Node.js was not found. Install Node from nodejs.org and click Connect again — or install Echo from the GitHub Release (.exe / .dmg) which does not need Node.";
+    }
+    return { ok: true, message, path: file };
   } catch (err) {
     return { ok: false, message: errorMessage(err) };
   }
@@ -184,9 +192,51 @@ function httpConfig(url: string, token: string) {
 function stdioConfig(url: string, token: string) {
   return {
     mcpServers: {
-      [SERVER_NAME]: stdioLaunchSpec(url, token),
+      [SERVER_NAME]: claudeLaunchEntry(url, token),
     },
   };
+}
+
+type ClaudeLaunchEntry = {
+  command: string;
+  args: string[];
+  env?: Record<string, string>;
+};
+
+function claudeLaunchEntry(url: string, token: string): ClaudeLaunchEntry {
+  const bridge = packagedBridgeLaunch();
+  if (bridge) return bridge;
+  const node = findNode();
+  const base = stdioLaunch(url, token);
+  const env = claudePathEnv(node);
+  return env ? { ...base, env } : base;
+}
+
+function packagedBridgeLaunch(): ClaudeLaunchEntry | null {
+  try {
+    if (!app.isPackaged) return null;
+    const bridge = path.join(process.resourcesPath, "echo-mcp-bridge.cjs");
+    if (!fs.existsSync(bridge)) return null;
+    return {
+      command: app.getPath("exe"),
+      args: [bridge],
+      env: {
+        ELECTRON_RUN_AS_NODE: "1",
+        ECHO_USERDATA: userDataDir(),
+        ECHO_RESOURCES: process.resourcesPath,
+      },
+    };
+  } catch {
+    return null;
+  }
+}
+
+function claudePathEnv(node: string | null): Record<string, string> | undefined {
+  if (!node) return undefined;
+  const nodeDir = path.dirname(node);
+  const sep = process.platform === "win32" ? ";" : ":";
+  const pathValue = `${nodeDir}${sep}${process.env.PATH || ""}`;
+  return { PATH: pathValue };
 }
 
 function stdioLaunch(url: string, token: string): { command: string; args: string[] } {

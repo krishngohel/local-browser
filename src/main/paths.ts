@@ -57,6 +57,18 @@ export function tokenPath(): string {
   return path.join(userDataDir(), "mcp-token.txt");
 }
 
+export function mcpPortPath(): string {
+  return path.join(userDataDir(), "mcp-port.txt");
+}
+
+export function writeMcpPortFile(port: number): void {
+  try {
+    fs.writeFileSync(mcpPortPath(), String(port), "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
 export function partitionName(): string {
   return "persist:local-browser";
 }

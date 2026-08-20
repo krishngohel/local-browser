@@ -215,7 +215,7 @@ function label(app: "cursor" | "claude" | "chatgpt", live: boolean, registered: 
   if (live) return "Connected now";
   if (registered) {
     if (app === "cursor") return "Saved in Cursor — not connected. Open Cursor and enable echo in Settings → MCP.";
-    if (app === "claude") return "Saved in Claude — not connected. Fully quit and reopen Claude Desktop.";
+    if (app === "claude") return "Saved in Claude — not connected yet. Fully quit Claude (Cmd+Q / tray Exit), keep Echo running, reopen Claude.";
     return "Saved in Codex — not connected. Fully quit and reopen ChatGPT desktop or Codex.";
   }
   if (exists) return "Found a config file — click Connect to add Echo";

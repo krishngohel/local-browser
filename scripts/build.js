@@ -63,6 +63,19 @@ async function main() {
   if (fs.existsSync(iconSrc)) {
     fs.copyFileSync(iconSrc, path.join("out", "icon.png"));
   }
+
+  const bridgeSrc = path.join("scripts", "echo-mcp-bridge.cjs");
+  const bridgeDestDir = path.join("out", "resources");
+  if (fs.existsSync(bridgeSrc)) {
+    fs.mkdirSync(bridgeDestDir, { recursive: true });
+    fs.copyFileSync(bridgeSrc, path.join(bridgeDestDir, "echo-mcp-bridge.cjs"));
+  }
+
+  const mcpRemoteSrc = path.join("node_modules", "mcp-remote");
+  const mcpRemoteDest = path.join("out", "resources", "mcp-remote");
+  if (fs.existsSync(mcpRemoteSrc)) {
+    fs.cpSync(mcpRemoteSrc, mcpRemoteDest, { recursive: true });
+  }
 }
 
 main().catch((err) => {

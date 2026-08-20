@@ -16,7 +16,7 @@ import { connectSnippets, connectStatus, registerChatGpt, registerClaudeDesktop,
 import { startMcpHttp } from "./mcp-http";
 import { mcpLiveStatus, setMcpSessionListener } from "./mcp-sessions";
 import { registerTools } from "../mcp/register-tools";
-import { CDP_PORT, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpPort, mcpUrl, mcpUrlForHost, userDataDir } from "./paths";
+import { CDP_PORT, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpPort, mcpUrl, mcpUrlForHost, userDataDir, writeMcpPortFile } from "./paths";
 import { lanIPv4s } from "./net";
 import { getOrCreateToken } from "./token";
 import { TestRunner } from "./test-runs";
@@ -501,6 +501,7 @@ if (!gotLock) {
     try {
       await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder), app.getVersion());
       mcpListening = true;
+      writeMcpPortFile(mcpPort());
       broadcast();
     } catch (error) {
       mcpListening = false;

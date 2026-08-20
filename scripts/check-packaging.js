@@ -12,6 +12,7 @@ const required = [
   "LICENSE",
   "skills/ECHO-SKILL-TREE.md",
   "package.json",
+  "scripts/echo-mcp-bridge.cjs",
 ];
 
 let failed = false;
