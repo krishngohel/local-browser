@@ -383,6 +383,7 @@ function findNode(): string | null {
       path.join(process.env.ProgramFiles || "C:\\Program Files", "nodejs", "node.exe"),
       path.join(process.env.LOCALAPPDATA || "", "Programs", "nodejs", "node.exe"),
       process.env.NVM_SYMLINK ? path.join(process.env.NVM_SYMLINK, "node.exe") : "",
+      path.join(process.env["ProgramFiles(Arm)"] || "C:\\Program Files (Arm)", "nodejs", "node.exe"),
     ]);
   }
 

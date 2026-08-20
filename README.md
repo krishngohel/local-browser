@@ -29,9 +29,10 @@ Pick the file for your OS:
 
 | Your computer | Download this file |
 | --- | --- |
-| Windows (64-bit) | `Echo-Setup-1.0.0-x64.exe` |
-| Mac (Apple Silicon or Intel) | `Echo-1.0.0-mac-universal.dmg` |
-| Linux (64-bit) | `Echo-1.0.0-linux-x64.AppImage` |
+| Windows (Intel/AMD 64-bit) | `Echo-Setup-*-x64.exe` |
+| Windows (ARM — Surface, Snapdragon PC) | `Echo-Setup-*-arm64.exe` |
+| Mac (Apple Silicon or Intel) | `Echo-*-mac-universal.dmg` (or `*-mac-arm64.dmg` on Releases) |
+| Linux (64-bit) | `Echo-*-linux-x64.AppImage` |
 
 If the Releases page is empty, the maintainer needs to publish a version tag (for example `v1.0.0`) so GitHub Actions builds the installers. Until then, use [Run from source](#run-from-source-developers) below.
 
@@ -41,7 +42,9 @@ If the Releases page is empty, the maintainer needs to publish a version tag (fo
 
 ## Install — Windows
 
-1. Download `Echo-Setup-1.0.0-x64.exe` from [Releases](https://github.com/krishngohel/local-browser/releases).
+1. Download the installer for **your CPU** from [Releases](https://github.com/krishngohel/local-browser/releases):
+   - Most PCs: `Echo-Setup-*-x64.exe`
+   - **ARM laptops** (Surface Pro X, Snapdragon, Copilot+ PC): `Echo-Setup-*-arm64.exe` — do not use the x64 build on ARM.
 2. Run the installer. **Windows SmartScreen** may warn because the build is unsigned:
    - Click **More info** → **Run anyway**.
 3. Finish the wizard. Echo installs to `%LOCALAPPDATA%\Programs\Echo\` and adds Desktop + Start Menu shortcuts.
@@ -203,7 +206,8 @@ npm run dist
 
 | OS | Output |
 | --- | --- |
-| Windows | `dist-installer/Echo-Setup-1.0.0-x64.exe` |
+| Windows x64 | `dist-installer/Echo-Setup-*-x64.exe` |
+| Windows ARM64 | `dist-installer/Echo-Setup-*-arm64.exe` |
 | Mac | `dist-installer/Echo-1.0.0-mac-universal.dmg` |
 | Linux | `dist-installer/Echo-1.0.0-linux-x64.AppImage` |
 
@@ -267,6 +271,10 @@ Use the **This network** URL and token from Settings. Allow Echo through the hos
 ### MCP port in use
 
 Echo prefers port **18931** and tries **18931–18940**. Port 8931 is avoided (Playwright MCP default). Check Settings for the actual URL.
+
+### Windows ARM laptop (Surface, Snapdragon)
+
+Use **`Echo-Setup-*-arm64.exe`**, not the x64 installer. The x64 build may fail to install, crash, or behave oddly under emulation. Releases from **v1.0.2** include a native ARM64 Windows build. Settings → System → About → **System type** should say **ARM64-based PC**.
 
 ---
 

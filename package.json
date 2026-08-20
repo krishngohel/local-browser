@@ -1,6 +1,6 @@
 {
   "name": "local-browser",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Echo — local Chrome-compatible browser with MCP for any AI client",
   "main": "out/main/index.js",
   "author": "Echo contributors",
@@ -91,7 +91,8 @@
         {
           "target": "nsis",
           "arch": [
-            "x64"
+            "x64",
+            "arm64"
           ]
         }
       ]
@@ -163,7 +164,8 @@
       "uninstallDisplayName": "Echo",
       "license": "LICENSE",
       "runAfterFinish": true,
-      "deleteAppDataOnUninstall": false
+      "deleteAppDataOnUninstall": false,
+      "buildUniversalInstaller": false
     }
   }
 }
