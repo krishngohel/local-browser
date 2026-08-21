@@ -175,6 +175,8 @@ export class BrowserHub {
   private overlayHeight = 0;
   /** Icon URL -> resized data URL (or "" for one that could not be decoded). */
   private faviconCache = new Map<string, string>();
+  /** In-flight icon downloads, so several tabs on one site fetch it once. */
+  private faviconPending = new Map<string, Promise<string>>();
   private thumbs = new Map<string, { at: number; data: string }>();
   private headerSessions = new WeakSet<Session>();
   /** Sessions whose webRequest network listeners are already installed. */
@@ -1718,9 +1720,7 @@ export class BrowserHub {
       if (url.startsWith("data:")) {
         data = url.length <= FAVICON_MAX_BYTES ? url : "";
       } else if (/^https?:/i.test(url)) {
-        const cached = this.faviconCache.get(url);
-        data = cached ?? (await fetchFavicon(tab.view.webContents.session, url));
-        if (cached === undefined) this.cacheFavicon(url, data);
+        data = await this.favicon(tab.view.webContents.session, url);
       }
       if (!data) continue;
       // The tab may have navigated while the icon was in flight; that page's icon is not this one.
@@ -1730,6 +1730,19 @@ export class BrowserHub {
       this.onChange();
       return;
     }
+  }
+
+  /** Cached, deduped icon download. Concurrent callers for one URL share a single request. */
+  private async favicon(ses: Session, url: string): Promise<string> {
+    const cached = this.faviconCache.get(url);
+    if (cached !== undefined) return cached;
+    const pending = this.faviconPending.get(url);
+    if (pending) return pending;
+    const request = fetchFavicon(ses, url).finally(() => this.faviconPending.delete(url));
+    this.faviconPending.set(url, request);
+    const data = await request;
+    this.cacheFavicon(url, data);
+    return data;
   }
 
   private cacheFavicon(url: string, data: string): void {
@@ -2087,6 +2100,9 @@ async function fetchFavicon(ses: Session, url: string): Promise<string> {
   try {
     const response = await ses.fetch(url, { signal: controller.signal });
     if (!response.ok) return "";
+    // Refuse an oversized icon before reading it into memory when the server declares a size.
+    const declared = Number(response.headers.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > FAVICON_MAX_BYTES) return "";
     const buffer = Buffer.from(await response.arrayBuffer());
     if (!buffer.length || buffer.length > FAVICON_MAX_BYTES) return "";
     const image = nativeImage.createFromBuffer(buffer);

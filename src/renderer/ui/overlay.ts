@@ -17,13 +17,28 @@ let applied = -1;
 /** Bottom padding under the tallest panel so its shadow is not cut off. */
 const GUTTER = 10;
 
+/** Default when the shell cannot be measured (it is `display:none` on the settings page). */
+const FALLBACK_CHROME_H = 84;
+
 export function chromeHeight(): number {
   const shell = document.querySelector(".shell") as HTMLElement | null;
-  return shell ? Math.round(shell.getBoundingClientRect().height) : 84;
+  const measured = shell ? Math.round(shell.getBoundingClientRect().height) : 0;
+  return measured > 0 ? measured : FALLBACK_CHROME_H;
+}
+
+function settingsOpen(): boolean {
+  return document.body.classList.contains("settings-open");
 }
 
 /** Reserves down to `bottomPx` in viewport coordinates. Pass 0 to release the claim. */
 export function reserve(name: string, bottomPx: number): void {
+  // The settings page is full-window: there is no page view to uncover, and the hidden shell
+  // would measure 0 and turn every panel into a full-height claim that lands on the page the
+  // moment settings closes.
+  if (settingsOpen()) {
+    release(name);
+    return;
+  }
   const need = bottomPx <= 0 ? 0 : Math.max(0, Math.round(bottomPx + GUTTER - chromeHeight()));
   if (need <= 0) claims.delete(name);
   else claims.set(name, need);

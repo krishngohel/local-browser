@@ -17,14 +17,18 @@ export function toast(message: string, kind: Kind = "info"): void {
   item.append(h("span", { text: message }));
   root.append(item);
   while (root.children.length > MAX) root.firstElementChild?.remove();
-  measure();
+  remeasureToasts();
   window.setTimeout(() => {
     item.remove();
-    measure();
+    remeasureToasts();
   }, LIFE_MS);
 }
 
-function measure(): void {
+/**
+ * Re-claims the strip a visible toast needs. `releaseAll` drops every claim at once (Escape,
+ * a resize, leaving settings), and a toast outlives all three, so its owner has to ask again.
+ */
+export function remeasureToasts(): void {
   const root = maybe<HTMLElement>("toasts");
   if (!root) return;
   window.clearTimeout(timer);

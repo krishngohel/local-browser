@@ -4,7 +4,7 @@ import { applyTheme, reportChromeHeight } from "./ui/theme";
 import { renderTabs, hidePreview, invalidateTabs } from "./ui/tabs";
 import { initOmnibox, renderOmnibox, focusOmnibox, closeSuggestions } from "./ui/omnibox";
 import { initAssistant, renderAssistant, closePopover } from "./ui/assistant";
-import { toast } from "./ui/toasts";
+import { remeasureToasts, toast } from "./ui/toasts";
 import { releaseAll } from "./ui/overlay";
 import {
   fillSnippets,
@@ -77,7 +77,11 @@ function renderRecordButton(next: AppState): void {
   const rec = next.recording;
   recordBtn.classList.toggle("on", rec.active);
   recordBtn.disabled = rec.playing;
-  recordBtn.title = rec.playing ? "Playing recording" : rec.active ? "Stop recording" : "Record";
+  recordBtn.title = rec.playing
+    ? "Playing recording"
+    : rec.active
+      ? "Stop recording"
+      : "Start recording";
   recordBtn.setAttribute("aria-label", recordBtn.title);
 }
 
@@ -85,7 +89,9 @@ function toggleBookmark(): void {
   if (!state) return;
   if (state.bookmarks.activeBookmarked) {
     const url = state.tabs.find((t) => t.id === state!.activeTabId)?.url ?? "";
-    void window.lb.removeBookmark(url).then(() => toast("Bookmark removed"));
+    void window.lb.removeBookmark(url).then((removed) => {
+      if (removed) toast("Bookmark removed");
+    });
   } else {
     void window.lb.addBookmark().then((added) => {
       toast(added ? "Bookmarked" : "Nothing to bookmark", added ? "ok" : "info");
@@ -98,6 +104,8 @@ function closeOverlays(): void {
   closePopover();
   hidePreview();
   releaseAll();
+  // A toast on screen still needs its strip; releaseAll just took it away.
+  remeasureToasts();
 }
 
 backBtn.addEventListener("click", () => void window.lb.back());

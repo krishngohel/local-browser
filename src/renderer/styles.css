@@ -382,8 +382,8 @@ body.compact .toolbar .actions {
 
 .icon-btn {
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   display: grid;
   place-items: center;
   border: 0;
@@ -495,23 +495,62 @@ body.compact .omnibox {
 
 /* --------------------------------------------------------- record button */
 
+/*
+ * A ring around a dot, sized to the 18px icons beside it, so the record control reads as a
+ * button in the same family as back/forward/reload rather than a loose dot in the toolbar.
+ */
 .rec-dot {
-  width: 10px;
-  height: 10px;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--muted);
+  border-radius: 50%;
+  transition: border-color 150ms ease;
+}
+
+.rec-dot::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
   border-radius: 50%;
   background: var(--muted);
-  transition:
-    background 150ms ease,
-    border-radius 150ms ease;
+  transition: background 150ms ease;
+}
+
+.rec-btn:hover:not(:disabled) .rec-dot,
+.rec-btn:hover:not(:disabled) .rec-dot::after {
+  border-color: var(--ink);
+  background: var(--ink);
+}
+
+.rec-btn:hover:not(:disabled) .rec-dot {
+  background: transparent;
 }
 
 .rec-btn.on {
   background: rgba(220, 38, 38, 0.12);
 }
 
-.rec-btn.on .rec-dot {
-  border-radius: 3px;
+.rec-btn.on .rec-dot,
+.rec-btn.on:hover .rec-dot {
+  border-color: var(--danger);
+  background: transparent;
+}
+
+.rec-btn.on .rec-dot::after,
+.rec-btn.on:hover .rec-dot::after {
   background: var(--danger);
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes rec-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
 }
 
 /* -------------------------------------------------------- assistant pill */
@@ -776,6 +815,17 @@ body.compact .omnibox {
   display: flex;
   align-items: baseline;
   gap: 8px;
+}
+
+.call-status {
+  flex: 0 0 11px;
+  width: 11px;
+  height: 11px;
+  fill: var(--live);
+}
+
+.call.bad .call-status {
+  fill: var(--danger);
 }
 
 .call-tool {

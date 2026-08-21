@@ -400,7 +400,7 @@ try {
     const listed = await json("tabs_list");
     assert.equal(listed.length, before.length + 1);
     assert.equal(listed.find((t) => t.id === id)?.incognito, true);
-    assert.ok("favicon" in listed[0]);
+    assert.equal(typeof listed[0].favicon, "boolean");
     await ok("tabs_close", { id });
     await ok("tabs_select", { id: before[0].id });
     assert.equal((await json("tabs_list")).length, before.length);

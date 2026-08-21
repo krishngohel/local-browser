@@ -1,5 +1,6 @@
 import type { AppState } from "../../shared/types";
-import { toast } from "./toasts";
+import { remeasureToasts, toast } from "./toasts";
+import { releaseAll } from "./overlay";
 
 /**
  * The settings page. Behaviour is carried over unchanged from the pre-rewrite renderer —
@@ -332,6 +333,7 @@ export async function openSettings(section?: string): Promise<void> {
 export async function closeSettings(): Promise<void> {
   settingsEl().hidden = true;
   setOpenClass(false);
+  dropOverlays();
   if (window.lb) await window.lb.setSettings(false);
 }
 
@@ -339,6 +341,16 @@ export async function closeSettings(): Promise<void> {
 export function hideSettings(): void {
   settingsEl().hidden = true;
   setOpenClass(false);
+  dropOverlays();
+}
+
+/**
+ * Panels claim a strip of the page view. Nothing claims while settings is open, but a claim
+ * made before it opened would otherwise be handed to the page on the way out.
+ */
+function dropOverlays(): void {
+  releaseAll();
+  remeasureToasts();
 }
 
 /** Both nodes carry the class: <html> sizes the document, <body> drives the layout rules. */

@@ -10,11 +10,8 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
   define(server, deps, "tabs_list", "List open browser tabs.", {}, async () => {
     // Favicons are stored as data URLs because the chrome's CSP cannot load remote images.
     // Sending one per tab would cost hundreds of tokens for a thumbnail no assistant can use,
-    // so the field is truncated to show that the page has an icon without shipping it.
-    const tabs = hub.listTabs().map((tab) => ({
-      ...tab,
-      favicon: tab.favicon ? `${tab.favicon.slice(0, 22)}…` : null,
-    }));
+    // so the field reports whether the page has an icon rather than carrying it.
+    const tabs = hub.listTabs().map((tab) => ({ ...tab, favicon: tab.favicon !== null }));
     return text(JSON.stringify(tabs, null, 2));
   });
 

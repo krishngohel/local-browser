@@ -150,12 +150,17 @@ function row(entry: ActivityEntry, longest: number): HTMLElement {
   const width = Math.max(2, Math.round((entry.ms / longest) * 100));
   const bar = h("i", { class: "call-bar" });
   bar.style.width = `${width}%`;
+  const status = svgIcon(entry.ok ? "check" : "close", "call-status");
+  status.setAttribute("aria-label", entry.ok ? "Succeeded" : "Failed");
+  status.removeAttribute("aria-hidden");
+  status.setAttribute("role", "img");
   return h(
     "div",
     { class: `call${entry.ok ? "" : " bad"}`, title: entry.summary || entry.tool },
     h(
       "div",
       { class: "call-top" },
+      status,
       h("span", { class: "call-tool", text: entry.tool }),
       h("span", { class: "call-client", text: entry.client || "unknown" }),
       h("span", { class: "call-ms", text: formatMs(entry.ms) }),

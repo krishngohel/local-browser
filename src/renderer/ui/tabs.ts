@@ -1,6 +1,6 @@
 import type { AppState, TabInfo } from "../../shared/types";
 import { h, hostOf, maybe, svgIcon } from "./dom";
-import { chromeHeight, place, release } from "./overlay";
+import { chromeHeight, place, release, reserve } from "./overlay";
 
 const HOVER_MS = 500;
 
@@ -23,6 +23,9 @@ export function renderTabs(state: AppState, root: HTMLElement): void {
   const key = tabsKey(state);
   if (key === lastKey && root.childElementCount === state.tabs.length) return;
   lastKey = key;
+  // The pill the card was anchored to is about to be replaced; if its tab is gone entirely the
+  // card would hang there pointing at nothing.
+  if (previewFor && !state.tabs.some((t) => t.id === previewFor)) hidePreview();
   root.replaceChildren(...state.tabs.map((tab, index) => tabPill(tab, index, state)));
 }
 
@@ -172,7 +175,13 @@ async function showPreview(tab: TabInfo, pill: HTMLElement): Promise<void> {
   if (previewFor !== tab.id || !pill.isConnected) return;
   card.replaceChildren();
   if (shot) {
-    card.append(h("img", { class: "preview-shot", src: shot, alt: "" }));
+    const img = h("img", { class: "preview-shot", src: shot, alt: "" });
+    // The image has no height until it decodes, so the first measurement is short by the whole
+    // thumbnail. Claim the rest of the strip once the real height exists.
+    img.addEventListener("load", () => {
+      if (!card.hidden) reserve("tab-preview", card.getBoundingClientRect().bottom);
+    });
+    card.append(img);
   } else {
     // Background tabs that have not been on screen since their last navigation have no
     // capture to serve; the placeholder says so instead of showing a blank frame.
