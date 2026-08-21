@@ -6,6 +6,8 @@ import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
 import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
 import type { Recorder } from "./recordings";
+import type { Downloads } from "./downloads";
+import type { History } from "./history";
 import type { TabInfo } from "../shared/types";
 
 export type SnapshotItem = {
@@ -24,9 +26,13 @@ type Tab = {
   view: BrowserView;
   console: string[];
   networkFailures: string[];
+  favicon: string | null;
+  incognito: boolean;
+  partition: string;
 };
 
 const HOME_URL = "https://www.google.com/";
+const THUMB_TTL_MS = 10_000;
 
 export class BrowserHub {
   private window: BrowserWindow | null = null;
@@ -40,9 +46,32 @@ export class BrowserHub {
   private rec: Recorder | null = null;
   private snapshotByRef = new Map<string, SnapshotItem>();
   private watching = false;
+  private history: History | null = null;
+  private downloads: Downloads | null = null;
+  private homeUrl = HOME_URL;
+  private chromeHeight = CHROME_HEIGHT;
+  private thumbs = new Map<string, { at: number; data: string }>();
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
+  }
+
+  setHistory(h: History): void {
+    this.history = h;
+  }
+
+  setDownloads(d: Downloads): void {
+    this.downloads = d;
+  }
+
+  setHomeUrl(url: string): void {
+    if (/^https?:\/\//.test(url)) this.homeUrl = url;
+  }
+
+  /** Chrome (toolbar) height in px. The renderer reports its own measured height. */
+  setChromeHeight(px: number): void {
+    this.chromeHeight = Math.max(40, Math.min(160, Math.round(px)));
+    this.layout();
   }
 
   setWindow(window: BrowserWindow, onChange: () => void): void {
@@ -100,6 +129,7 @@ export class BrowserHub {
     ses.on("will-download", (_event, item) => {
       const dest = path.join(downloadsDir(), item.getFilename());
       item.setSavePath(dest);
+      this.downloads?.track(item, dest);
     });
   }
 
@@ -117,26 +147,31 @@ export class BrowserHub {
     return false;
   }
 
-  createTab(url = HOME_URL, opts?: { record?: boolean }): string {
+  createTab(url?: string, opts?: { record?: boolean; incognito?: boolean }): string {
     if (!this.window) throw new Error("Window not ready");
     const id = `tab-${++this.seq}`;
+    const incognito = opts?.incognito === true;
+    // A non-"persist:" partition is memory-only, so an incognito tab leaves no
+    // cookies or cache behind. Each incognito tab gets its own.
+    const partition = incognito ? `incognito-${id}` : partitionName();
+    if (incognito) applyChromeSession(session.fromPartition(partition));
     const view = new BrowserView({
       webPreferences: {
-        partition: partitionName(),
+        partition,
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "..", "preload", "page.js"),
       },
     });
-    const tab: Tab = { id, view, console: [], networkFailures: [] };
+    const tab: Tab = { id, view, console: [], networkFailures: [], favicon: null, incognito, partition };
     installChromePageShim(view.webContents);
     this.attachListeners(tab);
     this.tabs.set(id, tab);
     this.order.push(id);
     this.window.addBrowserView(view);
     this.selectTab(id, { record: false });
-    const target = normalizeUrl(url);
+    const target = normalizeUrl(url ?? this.homeUrl);
     if (opts?.record !== false) this.rec?.record({ type: "newTab", url: target });
     void view.webContents.loadURL(target);
     this.onChange();
@@ -176,13 +211,14 @@ export class BrowserHub {
 
   closeTab(id: string): void {
     if (this.tabs.size <= 1) {
-      void this.navigate(HOME_URL);
+      void this.navigate(this.homeUrl);
       return;
     }
     const tab = this.requireTab(id);
     this.window?.removeBrowserView(tab.view);
     tab.view.webContents.close();
     this.tabs.delete(id);
+    this.thumbs.delete(id);
     this.order = this.order.filter((x) => x !== id);
     if (this.activeId === id) {
       this.selectTab(this.order[this.order.length - 1], { record: false });
@@ -200,8 +236,32 @@ export class BrowserHub {
         title: wc.getTitle() || "New tab",
         url: wc.getURL() || "",
         loading: wc.isLoading(),
+        favicon: tab.favicon,
+        incognito: tab.incognito,
       };
     });
+  }
+
+  /** Moves a tab to `index` in the strip. Out-of-range indexes clamp to the ends. */
+  reorderTab(id: string, index: number): void {
+    const from = this.order.indexOf(id);
+    if (from < 0) return;
+    const to = Math.max(0, Math.min(this.order.length - 1, Math.round(index)));
+    if (to === from) return;
+    this.order.splice(from, 1);
+    this.order.splice(to, 0, id);
+    this.onChange();
+  }
+
+  /** 320px-wide data URL of the tab's current page, cached for 10 s per tab. */
+  async tabThumbnail(id: string): Promise<string> {
+    const cached = this.thumbs.get(id);
+    if (cached && Date.now() - cached.at < THUMB_TTL_MS) return cached.data;
+    const image = await this.requireTab(id).view.webContents.capturePage();
+    if (image.isEmpty()) return "";
+    const data = image.resize({ width: 320 }).toDataURL();
+    this.thumbs.set(id, { at: Date.now(), data });
+    return data;
   }
 
   activeTabId(): string | null {
@@ -872,7 +932,7 @@ export class BrowserHub {
       deviceScaleFactor: 1,
       scale: 1,
     });
-    this.window?.setContentSize(Math.max(width, 900), height + CHROME_HEIGHT);
+    this.window?.setContentSize(Math.max(width, 900), height + this.chromeHeight);
     this.layout();
   }
 
@@ -908,9 +968,9 @@ export class BrowserHub {
     tab.view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
     tab.view.setBounds({
       x: 0,
-      y: CHROME_HEIGHT,
+      y: this.chromeHeight,
       width: Math.max(0, Math.round(width)),
-      height: Math.max(0, Math.round(height) - CHROME_HEIGHT),
+      height: Math.max(0, Math.round(height) - this.chromeHeight),
     });
   }
 
@@ -927,9 +987,19 @@ export class BrowserHub {
       this.createTab(url, { record: false });
       return { action: "deny" };
     });
-    wc.on("page-title-updated", () => this.onChange());
+    wc.on("page-favicon-updated", (_e, icons) => {
+      tab.favicon = icons[0] ?? null;
+      this.onChange();
+    });
+    wc.on("page-title-updated", () => {
+      if (!tab.incognito) this.history?.updateTitle(wc.getURL(), wc.getTitle());
+      this.onChange();
+    });
     wc.on("did-navigate", () => {
       if (this.activeId === tab.id) this.snapshotByRef.clear();
+      tab.favicon = null;
+      this.thumbs.delete(tab.id);
+      if (!tab.incognito) this.history?.add(wc.getURL(), wc.getTitle());
       this.onChange();
     });
     wc.on("did-navigate-in-page", () => this.onChange());

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppState, ConnectResult, ConnectSnippets, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 
 contextBridge.exposeInMainWorld("lb", {
   getState: (): Promise<AppState> => ipcRenderer.invoke("state"),
@@ -10,6 +10,14 @@ contextBridge.exposeInMainWorld("lb", {
   newTab: () => ipcRenderer.invoke("tabs:new"),
   selectTab: (id: string) => ipcRenderer.invoke("tabs:select", id),
   closeTab: (id: string) => ipcRenderer.invoke("tabs:close", id),
+  newIncognitoTab: () => ipcRenderer.invoke("tabs:new-incognito"),
+  reorderTab: (id: string, index: number) => ipcRenderer.invoke("tabs:reorder", id, index),
+  tabThumbnail: (id: string): Promise<string> => ipcRenderer.invoke("tabs:thumbnail", id),
+  setChromeHeight: (px: number) => ipcRenderer.invoke("chrome:height", px),
+  addBookmark: (): Promise<BookmarkInfo> => ipcRenderer.invoke("bookmarks:add"),
+  removeBookmark: (idOrUrl: string): Promise<boolean> => ipcRenderer.invoke("bookmarks:remove", idOrUrl),
+  listBookmarks: (): Promise<BookmarkInfo[]> => ipcRenderer.invoke("bookmarks:list"),
+  searchHistory: (q: string): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:search", q),
   search: (query: string) => ipcRenderer.invoke("search", query),
   connectCursor: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:cursor"),
   connectClaude: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:claude"),
@@ -30,6 +38,8 @@ contextBridge.exposeInMainWorld("lb", {
   setAutostart: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("autostart:set", enabled),
   setTransfer: (next: Partial<TransferPrefs>): Promise<TransferPrefs> => ipcRenderer.invoke("transfer:set", next),
   setSettings: (open: boolean) => ipcRenderer.invoke("settings:set", open),
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("settings:get"),
+  updateSettings: (next: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("settings:update", next),
   setPaused: (p: boolean): Promise<boolean> => ipcRenderer.invoke("activity:pause", p),
   clearActivity: () => ipcRenderer.invoke("activity:clear"),
   openMenu: () => ipcRenderer.invoke("menu:app"),

@@ -3,6 +3,22 @@ export type TabInfo = {
   title: string;
   url: string;
   loading: boolean;
+  favicon: string | null;
+  incognito: boolean;
+};
+
+export type HistoryEntry = { url: string; title: string; visitedAt: string };
+
+export type BookmarkInfo = { id: string; url: string; title: string; createdAt: string };
+
+export type DownloadInfo = {
+  id: string;
+  filename: string;
+  path: string;
+  bytes: number;
+  totalBytes: number;
+  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  startedAt: string;
 };
 
 export type TestRunInfo = {
@@ -127,6 +143,8 @@ export type AppState = {
   platform: string;
   toolCount: number;
   activity: ActivityState;
+  settings: AppSettings;
+  bookmarks: { count: number; activeBookmarked: boolean };
 };
 
 export type ConnectResult = {

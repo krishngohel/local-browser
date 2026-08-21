@@ -21,11 +21,14 @@ import { lanIPv4s } from "./net";
 import { getOrCreateToken } from "./token";
 import { TestRunner } from "./test-runs";
 import { Recorder } from "./recordings";
-import type { AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
-import { getSettings } from "./settings";
+import { getSettings, setSettings } from "./settings";
 import { ActivityLog } from "./activity";
+import { History } from "./history";
+import { Bookmarks } from "./bookmarks";
+import { Downloads } from "./downloads";
 
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
@@ -36,6 +39,10 @@ const hub = new BrowserHub();
 const tests = new TestRunner(hub);
 const recorder = new Recorder();
 const activity = new ActivityLog();
+// Built in whenReady, once app.getPath("userData") is final.
+let history: History;
+let bookmarks: Bookmarks;
+let downloads: Downloads;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let mcpListening = false;
@@ -71,6 +78,8 @@ function getState(): AppState {
     platform: process.platform,
     toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
     activity: activity.state(),
+    settings: getSettings(),
+    bookmarks: { count: bookmarks.list().length, activeBookmarked: bookmarks.has(hub.activeUrl()) },
   };
 }
 
@@ -261,6 +270,18 @@ function registerIpc(): void {
     hub.createTab();
     broadcast();
   });
+  ipcMain.handle("tabs:new-incognito", () => {
+    hub.createTab(undefined, { incognito: true });
+    broadcast();
+  });
+  ipcMain.handle("tabs:reorder", (_e, id: string, index: number) => {
+    hub.reorderTab(id, index);
+    broadcast();
+  });
+  ipcMain.handle("tabs:thumbnail", (_e, id: string) => hub.tabThumbnail(id));
+  ipcMain.handle("chrome:height", (_e, px: number) => {
+    hub.setChromeHeight(px);
+  });
   ipcMain.handle("tabs:select", (_e, id: string) => {
     hub.selectTab(id);
     broadcast();
@@ -322,6 +343,27 @@ function registerIpc(): void {
     hub.setSettingsOpen(open);
     broadcast();
   });
+  ipcMain.handle("settings:get", () => getSettings());
+  ipcMain.handle("settings:update", (_e, next: Partial<AppSettings>) => {
+    const s = setSettings(next);
+    hub.setHomeUrl(s.homeUrl);
+    broadcast();
+    return s;
+  });
+  ipcMain.handle("bookmarks:list", () => bookmarks.list());
+  ipcMain.handle("bookmarks:add", () => {
+    const url = hub.activeUrl();
+    const title = hub.listTabs().find((t) => t.id === hub.activeTabId())?.title ?? url;
+    const added = bookmarks.add(url, title);
+    broadcast();
+    return added;
+  });
+  ipcMain.handle("bookmarks:remove", (_e, idOrUrl: string) => {
+    const removed = bookmarks.remove(idOrUrl);
+    broadcast();
+    return removed;
+  });
+  ipcMain.handle("history:search", (_e, q: string) => history.search(String(q ?? ""), 8));
   ipcMain.handle("menu:app", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const menu = Menu.buildFromTemplate([
@@ -500,6 +542,13 @@ if (!gotLock) {
       app.quit();
       return;
     }
+
+    history = new History(userDataDir());
+    bookmarks = new Bookmarks(userDataDir());
+    downloads = new Downloads();
+    hub.setHistory(history);
+    hub.setDownloads(downloads);
+    hub.setHomeUrl(getSettings().homeUrl);
 
     token = getOrCreateToken();
     setMcpSessionListener(broadcast);

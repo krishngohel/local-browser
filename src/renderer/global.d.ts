@@ -1,4 +1,4 @@
-import type { AppState, ConnectResult, ConnectSnippets, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 
 declare global {
   interface Window {
@@ -11,6 +11,14 @@ declare global {
       newTab: () => Promise<void>;
       selectTab: (id: string) => Promise<void>;
       closeTab: (id: string) => Promise<void>;
+      newIncognitoTab: () => Promise<void>;
+      reorderTab: (id: string, index: number) => Promise<void>;
+      tabThumbnail: (id: string) => Promise<string>;
+      setChromeHeight: (px: number) => Promise<void>;
+      addBookmark: () => Promise<BookmarkInfo>;
+      removeBookmark: (idOrUrl: string) => Promise<boolean>;
+      listBookmarks: () => Promise<BookmarkInfo[]>;
+      searchHistory: (q: string) => Promise<HistoryEntry[]>;
       search: (query: string) => Promise<void>;
       connectCursor: () => Promise<ConnectResult>;
       connectClaude: () => Promise<ConnectResult>;
@@ -31,6 +39,8 @@ declare global {
       setAutostart: (enabled: boolean) => Promise<boolean>;
       setTransfer: (next: Partial<TransferPrefs>) => Promise<TransferPrefs>;
       setSettings: (open: boolean) => Promise<void>;
+      getSettings: () => Promise<AppSettings>;
+      updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
       setPaused: (p: boolean) => Promise<boolean>;
       clearActivity: () => Promise<void>;
       openMenu: () => Promise<void>;
