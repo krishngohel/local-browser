@@ -8,7 +8,14 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
   const hub = deps.hub;
 
   define(server, deps, "tabs_list", "List open browser tabs.", {}, async () => {
-    return text(JSON.stringify(hub.listTabs(), null, 2));
+    // Favicons are stored as data URLs because the chrome's CSP cannot load remote images.
+    // Sending one per tab would cost hundreds of tokens for a thumbnail no assistant can use,
+    // so the field is truncated to show that the page has an icon without shipping it.
+    const tabs = hub.listTabs().map((tab) => ({
+      ...tab,
+      favicon: tab.favicon ? `${tab.favicon.slice(0, 22)}…` : null,
+    }));
+    return text(JSON.stringify(tabs, null, 2));
   });
 
   define(

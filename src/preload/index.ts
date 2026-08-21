@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("lb", {
   back: () => ipcRenderer.invoke("back"),
   forward: () => ipcRenderer.invoke("forward"),
   reload: () => ipcRenderer.invoke("reload"),
+  stop: () => ipcRenderer.invoke("stop"),
   newTab: () => ipcRenderer.invoke("tabs:new"),
   selectTab: (id: string) => ipcRenderer.invoke("tabs:select", id),
   closeTab: (id: string) => ipcRenderer.invoke("tabs:close", id),
@@ -15,6 +16,7 @@ contextBridge.exposeInMainWorld("lb", {
   reorderTab: (id: string, index: number) => ipcRenderer.invoke("tabs:reorder", id, index),
   tabThumbnail: (id: string): Promise<string> => ipcRenderer.invoke("tabs:thumbnail", id),
   setChromeHeight: (px: number) => ipcRenderer.invoke("chrome:height", px),
+  setOverlay: (px: number) => ipcRenderer.invoke("chrome:overlay", px),
   addBookmark: (): Promise<BookmarkInfo | null> => ipcRenderer.invoke("bookmarks:add"),
   removeBookmark: (idOrUrl: string): Promise<boolean> => ipcRenderer.invoke("bookmarks:remove", idOrUrl),
   listBookmarks: (): Promise<BookmarkInfo[]> => ipcRenderer.invoke("bookmarks:list"),
@@ -58,5 +60,11 @@ contextBridge.exposeInMainWorld("lb", {
   },
   onCloseSettings: (cb: () => void) => {
     ipcRenderer.on("close-settings", cb);
+  },
+  onToggleBookmark: (cb: () => void) => {
+    ipcRenderer.on("toggle-bookmark", cb);
+  },
+  onOpenPalette: (cb: () => void) => {
+    ipcRenderer.on("open-palette", cb);
   },
 });

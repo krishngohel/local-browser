@@ -13,36 +13,66 @@
   <body>
     <div class="shell" id="shell">
       <div class="tabstrip">
-        <div class="tabs" id="tabs">
-          <button class="circle-btn" id="new-tab" title="New tab" aria-label="New tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Open tabs"></div>
+        <button class="icon-btn new-tab" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+        </button>
+      </div>
+      <div class="toolbar">
+        <div class="omni-wrap">
+          <div class="nav-group">
+            <button class="icon-btn" id="back" title="Back (Alt+Left)" aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+            </button>
+            <button class="icon-btn" id="forward" title="Forward (Alt+Right)" aria-label="Forward">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
+            </button>
+            <button class="icon-btn" id="reload" title="Reload (Ctrl+R)" aria-label="Reload">
+              <svg id="reload-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
+              <svg id="stop-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
+            </button>
+          </div>
+          <form id="url-form" class="omnibox" autocomplete="off">
+            <span class="omni-icon search" id="omni-security" title="Search or type a URL">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
+            </span>
+            <input
+              id="url"
+              type="text"
+              spellcheck="false"
+              placeholder="Search Google or type a URL"
+              role="combobox"
+              aria-label="Address and search"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="omni-suggest"
+            />
+            <button class="icon-btn star" type="button" id="bookmark" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark this page">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z" /></svg>
+            </button>
+          </form>
+        </div>
+        <div class="actions">
+          <button class="icon-btn rec-btn" id="record" title="Record" aria-label="Record">
+            <i class="rec-dot"></i>
+          </button>
+          <!-- The pill replaced the old MCP LED. The id is kept so nothing that looked it up breaks. -->
+          <span class="led" id="led" hidden></span>
+          <button class="pill assistant off" type="button" id="assistant-pill" aria-haspopup="dialog" aria-expanded="false">
+            <i class="dot"></i><span class="pill-text">Assistant</span><i class="trace"></i>
+          </button>
+          <button class="icon-btn" id="menu" title="Customize and control" aria-label="Menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
           </button>
         </div>
       </div>
-      <div class="toolbar">
-        <button class="nav-btn" id="back" title="Back" aria-label="Back">
-          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
-        </button>
-        <button class="nav-btn" id="forward" title="Forward" aria-label="Forward">
-          <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
-        </button>
-        <button class="nav-btn" id="reload" title="Reload" aria-label="Reload">
-          <svg id="reload-icon" viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
-          <svg id="stop-icon" viewBox="0 0 24 24" hidden><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
-        </button>
-        <form id="url-form" class="omnibox">
-          <svg class="omnibox-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
-          <input id="url" type="text" spellcheck="false" placeholder="Search Google or type a URL" />
-        </form>
-        <button class="nav-btn rec-btn" id="record" title="Record" aria-label="Record">
-          <i class="rec-dot"></i>
-        </button>
-        <span class="led" id="led" title="MCP"><i></i></span>
-        <button class="nav-btn" id="menu" title="Customize and control" aria-label="Menu">
-          <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
-        </button>
-      </div>
     </div>
+
+    <div class="suggest" id="omni-suggest" role="listbox" aria-label="Suggestions" hidden></div>
+    <div class="pop" id="assistant-pop" role="dialog" aria-label="Assistant activity" hidden></div>
+    <div class="preview" id="tab-preview" aria-hidden="true" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="palette" id="palette" hidden></div>
 
     <section class="settings" id="settings" hidden>
       <header class="settings-top">

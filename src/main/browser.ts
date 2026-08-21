@@ -128,6 +128,14 @@ type Tab = {
 const HOME_URL = "https://www.google.com/";
 /** Per-tab request ring. Matches the `network_log` cap in the tool contract. */
 const NETWORK_LOG_CAP = 200;
+/**
+ * Favicons are fetched here, not by the renderer: the chrome's CSP is `img-src 'self' data:`,
+ * so a remote icon URL can never be loaded there. Main downloads it in the tab's own session
+ * (cookies and proxy included) and hands the renderer a small data URL.
+ */
+const FAVICON_TIMEOUT_MS = 5000;
+const FAVICON_MAX_BYTES = 64 * 1024;
+const FAVICON_CACHE_MAX = 200;
 /** In-flight requests waiting for a completion event. Bounded so a stalled tab cannot leak. */
 const PENDING_REQUEST_CAP = 600;
 const THUMB_TTL_MS = 10_000;
@@ -163,6 +171,10 @@ export class BrowserHub {
   private downloads: Downloads | null = null;
   private homeUrl = HOME_URL;
   private chromeHeight = CHROME_HEIGHT;
+  /** Extra strip below the chrome that the renderer is currently drawing an overlay into. */
+  private overlayHeight = 0;
+  /** Icon URL -> resized data URL (or "" for one that could not be decoded). */
+  private faviconCache = new Map<string, string>();
   private thumbs = new Map<string, { at: number; data: string }>();
   private headerSessions = new WeakSet<Session>();
   /** Sessions whose webRequest network listeners are already installed. */
@@ -202,6 +214,19 @@ export class BrowserHub {
   /** Chrome (toolbar) height in px. The renderer reports its own measured height. */
   setChromeHeight(px: number): void {
     this.chromeHeight = Math.max(40, Math.min(160, Math.round(px)));
+    this.layout();
+  }
+
+  /**
+   * Room for a renderer overlay — omnibox suggestions, the assistant popover, a tab preview.
+   * The page view is a native layer above the chrome document, so those panels are invisible
+   * until the view slides out of the way. It slides rather than shrinks: the height stays
+   * constant, so no site reflows while a dropdown is open.
+   */
+  setOverlayHeight(px: number): void {
+    const next = Math.max(0, Math.min(720, Math.round(px)));
+    if (next === this.overlayHeight) return;
+    this.overlayHeight = next;
     this.layout();
   }
 
@@ -540,6 +565,26 @@ export class BrowserHub {
         incognito: tab.incognito,
       };
     });
+  }
+
+  /** Steps `delta` places through the strip, wrapping at both ends (Ctrl+Tab). */
+  cycleTab(delta: number): void {
+    if (this.order.length < 2 || !this.activeId) return;
+    const at = this.order.indexOf(this.activeId);
+    if (at < 0) return;
+    const n = this.order.length;
+    const next = (((at + delta) % n) + n) % n;
+    this.selectTab(this.order[next], { record: false });
+  }
+
+  /** Selects the tab in slot `index`. Out-of-range slots do nothing, as in Chrome. */
+  selectTabIndex(index: number): void {
+    const id = this.order[index];
+    if (id && id !== this.activeId) this.selectTab(id, { record: false });
+  }
+
+  tabCount(): number {
+    return this.order.length;
   }
 
   /** Moves a tab to `index` in the strip. Out-of-range indexes clamp to the ends. */
@@ -1651,10 +1696,47 @@ export class BrowserHub {
     tab.view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
     tab.view.setBounds({
       x: 0,
-      y: this.chromeHeight,
+      y: this.chromeHeight + this.overlayHeight,
       width: Math.max(0, Math.round(width)),
       height: Math.max(0, Math.round(height) - this.chromeHeight),
     });
+  }
+
+  /**
+   * Turns the icon URLs Chromium reports into a data URL the chrome can render. PNG-looking
+   * candidates are tried first because `nativeImage` decodes PNG and JPEG but not .ico or
+   * .svg; a page that only offers those keeps `favicon: null` and shows the globe.
+   */
+  private async resolveFavicon(tab: Tab, icons: string[]): Promise<void> {
+    const before = safeUrl(tab.view.webContents);
+    const candidates = [...icons]
+      .slice(0, 4)
+      .sort((a, b) => Number(/\.png(\?|$)/i.test(b)) - Number(/\.png(\?|$)/i.test(a)));
+
+    for (const url of candidates) {
+      let data = "";
+      if (url.startsWith("data:")) {
+        data = url.length <= FAVICON_MAX_BYTES ? url : "";
+      } else if (/^https?:/i.test(url)) {
+        const cached = this.faviconCache.get(url);
+        data = cached ?? (await fetchFavicon(tab.view.webContents.session, url));
+        if (cached === undefined) this.cacheFavicon(url, data);
+      }
+      if (!data) continue;
+      // The tab may have navigated while the icon was in flight; that page's icon is not this one.
+      if (safeUrl(tab.view.webContents) !== before) return;
+      if (tab.favicon === data) return;
+      tab.favicon = data;
+      this.onChange();
+      return;
+    }
+  }
+
+  private cacheFavicon(url: string, data: string): void {
+    this.faviconCache.set(url, data);
+    if (this.faviconCache.size <= FAVICON_CACHE_MAX) return;
+    const oldest = this.faviconCache.keys().next().value;
+    if (oldest !== undefined) this.faviconCache.delete(oldest);
   }
 
   private clearDeviceEmulation(): void {
@@ -1671,8 +1753,7 @@ export class BrowserHub {
       return { action: "deny" };
     });
     wc.on("page-favicon-updated", (_e, icons) => {
-      tab.favicon = icons[0] ?? null;
-      this.onChange();
+      void this.resolveFavicon(tab, icons ?? []);
     });
     wc.on("page-title-updated", () => {
       if (!tab.incognito) this.history?.updateTitle(wc.getURL(), wc.getTitle());
@@ -1996,6 +2077,25 @@ export class BrowserHub {
       return;
     }
     await fallback();
+  }
+}
+
+/** Downloads one icon and returns a 32px data URL, or "" for anything that fails. */
+async function fetchFavicon(ses: Session, url: string): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FAVICON_TIMEOUT_MS);
+  try {
+    const response = await ses.fetch(url, { signal: controller.signal });
+    if (!response.ok) return "";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > FAVICON_MAX_BYTES) return "";
+    const image = nativeImage.createFromBuffer(buffer);
+    if (image.isEmpty()) return "";
+    return image.resize({ width: 32 }).toDataURL();
+  } catch {
+    return "";
+  } finally {
+    clearTimeout(timer);
   }
 }
 

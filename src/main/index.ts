@@ -121,10 +121,42 @@ function handleShortcut(input: Electron.Input): boolean {
     broadcast();
     return true;
   }
+  if (mod && input.shift && key === "n") {
+    hub.setSettingsOpen(false);
+    mainWindow?.webContents.send("close-settings");
+    hub.createTab(undefined, { incognito: true });
+    broadcast();
+    return true;
+  }
   if (mod && key === "w") {
     const id = hub.activeTabId();
     if (id) hub.closeTab(id);
     broadcast();
+    return true;
+  }
+  if (mod && key === "tab") {
+    hub.cycleTab(input.shift ? -1 : 1);
+    broadcast();
+    return true;
+  }
+  if (mod && !input.shift && /^[1-9]$/.test(key)) {
+    // Chrome's convention: 1-8 are slots, 9 is always the last tab.
+    hub.selectTabIndex(key === "9" ? hub.tabCount() - 1 : Number(key) - 1);
+    broadcast();
+    return true;
+  }
+  if (mod && key === "d") {
+    mainWindow?.webContents.send("toggle-bookmark");
+    return true;
+  }
+  if (mod && key === ",") {
+    hub.setSettingsOpen(true);
+    mainWindow?.webContents.send("open-settings", "connections");
+    broadcast();
+    return true;
+  }
+  if (mod && (key === "k" || (input.shift && key === "p"))) {
+    mainWindow?.webContents.send("open-palette");
     return true;
   }
   if (mod && key === "l") {
@@ -306,6 +338,13 @@ function registerIpc(): void {
     broadcast();
   });
   ipcMain.handle("tabs:thumbnail", (_e, id: string) => hub.tabThumbnail(id));
+  ipcMain.handle("chrome:overlay", (_e, px: number) => {
+    hub.setOverlayHeight(px);
+  });
+  ipcMain.handle("stop", () => {
+    hub.stop();
+    broadcast();
+  });
   ipcMain.handle("chrome:height", (_e, px: number) => {
     hub.setChromeHeight(px);
   });

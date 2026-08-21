@@ -9,6 +9,7 @@ declare global {
       back: () => Promise<void>;
       forward: () => Promise<void>;
       reload: () => Promise<void>;
+      stop: () => Promise<void>;
       newTab: () => Promise<void>;
       selectTab: (id: string) => Promise<void>;
       closeTab: (id: string) => Promise<void>;
@@ -16,6 +17,7 @@ declare global {
       reorderTab: (id: string, index: number) => Promise<void>;
       tabThumbnail: (id: string) => Promise<string>;
       setChromeHeight: (px: number) => Promise<void>;
+      setOverlay: (px: number) => Promise<void>;
       addBookmark: () => Promise<BookmarkInfo | null>;
       removeBookmark: (idOrUrl: string) => Promise<boolean>;
       listBookmarks: () => Promise<BookmarkInfo[]>;
@@ -50,6 +52,8 @@ declare global {
       onOpenSettings: (cb: (section?: string) => void) => void;
       onFocusOmnibox: (cb: () => void) => void;
       onCloseSettings: (cb: () => void) => void;
+      onToggleBookmark: (cb: () => void) => void;
+      onOpenPalette: (cb: () => void) => void;
     };
   }
 }

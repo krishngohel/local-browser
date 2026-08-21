@@ -502,6 +502,18 @@ try {
       10000,
       "End to scroll the page down",
     );
+    // Chromium animates a keyboard scroll over a few hundred ms. Resetting the position while
+    // that animation is still in flight leaves it to finish afterwards, so the reset has to
+    // wait for the page to come to rest first.
+    await waitFor(
+      async () => {
+        const before = await scrollY();
+        await sleep(150);
+        return (await scrollY()) === before;
+      },
+      5000,
+      "the keyboard scroll to settle",
+    );
     await ok("evaluate", { js: "window.scrollTo(0, 0)" });
     assert.equal(await scrollY(), 0);
     await ok("scroll", { deltaY: 400 });
