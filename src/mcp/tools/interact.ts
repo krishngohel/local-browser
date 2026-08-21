@@ -119,7 +119,7 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "dialog",
-    "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
+    "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen. Covers dialogs raised by the main frame.",
     { action: z.enum(["accept", "dismiss"]), promptText: z.string().optional() },
     async ({ action, promptText }) => {
       try {

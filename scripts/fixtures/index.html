@@ -26,6 +26,8 @@
   <button type="button" id="hover-me">hover me</button>
   <div id="out">idle</div>
   <script>
+    // Deliberate, so console_errors has something of its own to find.
+    console.error('echo fixture console error');
     var out = document.getElementById('out');
     var hover = document.getElementById('hover-me');
     hover.addEventListener('mouseover', function () { out.textContent = 'hovered'; });

@@ -332,6 +332,8 @@ try {
     await ok("click", { ref: await findRef({ text: "ask prompt" }) });
     await ok("wait_for", { text: "prompt: hi" });
     assert.match((await ok("dialog", { action: "accept" })).text, /Last dialog: prompt/);
+    // The preload hands the bridge to its shim and then takes it off the page.
+    assert.equal(JSON.parse((await ok("evaluate", { js: "typeof window.__echoDialog" })).text), "undefined");
   });
 
   await check("frames + frame_select", async () => {
@@ -463,20 +465,47 @@ try {
     assert.match((await ok("pdf_text")).text, /Table fixture/i);
   });
 
-  await check("screenshot + watch + extract_readable + console_errors", async () => {
+  await check("screenshot + watch + extract_readable", async () => {
     const shot = await ok("screenshot");
     assert.ok(shot.content.some((c) => c.type === "image"), "screenshot returned no image");
     const clip = await ok("watch", { durationMs: 800 });
     assert.match(clip.text, /Live feed/);
     assert.match((await ok("extract_readable")).text, /table/i);
-    await ok("console_errors");
   });
 
-  await check("back + reload + press + scroll + echo_help + viewport_set", async () => {
+  await check("console_errors + back + reload", async () => {
+    // index.html logs one console.error of its own on every load.
+    await ok("navigate", { url: `${FX}/index.html` });
+    assert.match((await ok("console_errors")).text, /echo fixture console error/);
+    await ok("navigate", { url: `${FX}/tables.html` });
     await ok("back");
+    await waitFor(
+      async () => (await json("page_info")).url.endsWith("/index.html"),
+      10000,
+      "back to index.html",
+    );
     await ok("reload");
-    await ok("press", { key: "End" });
-    await ok("scroll", { deltaY: 100 });
+    await ok("wait_for", { text: "Echo fixtures" });
+  });
+
+  await check("press + scroll + echo_help + viewport_set", async () => {
+    await ok("navigate", { url: `${FX}/tables.html` });
+    const scrollY = async () => JSON.parse((await ok("evaluate", { js: "window.scrollY" })).text);
+    // A real key press needs Playwright: the Electron fallback dispatches a synthetic
+    // KeyboardEvent, which carries no default action. Playwright's view of the tab can lag a
+    // navigation by a few dozen milliseconds, so the press is retried until it lands.
+    await waitFor(
+      async () => {
+        await ok("press", { key: "End" });
+        return (await scrollY()) > 0;
+      },
+      10000,
+      "End to scroll the page down",
+    );
+    await ok("evaluate", { js: "window.scrollTo(0, 0)" });
+    assert.equal(await scrollY(), 0);
+    await ok("scroll", { deltaY: 400 });
+    await waitFor(async () => (await scrollY()) > 0, 5000, "scroll to move the page down");
     assert.match((await ok("echo_help")).text, /skill tree/i);
     assert.match((await ok("viewport_set", { width: 800, height: 600 })).text, /800x600/);
   });

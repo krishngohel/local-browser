@@ -133,12 +133,17 @@ const PENDING_REQUEST_CAP = 600;
 const THUMB_TTL_MS = 10_000;
 const THUMB_CAPTURE_TIMEOUT_MS = 2_000;
 /**
- * How long to wait for Playwright's view of the active tab to catch up with Electron's.
+ * How long `requirePlaywrightPage()` waits for Playwright's view of the active tab to catch
+ * up with Electron's.
  *
  * `navigate` resolves on Electron's load event, which happens in the browser process; the
  * matching CDP event still has to reach the Playwright client before `page.url()` changes.
- * Without this wait, a Playwright-only tool (`drag`, `upload_file`, `dialog`) called right
- * after a navigation reports "Playwright not attached" for a few dozen milliseconds.
+ * Without this wait, a Playwright-only tool (`drag`, `upload_file`) called right after a
+ * navigation reports "Playwright not attached" for a few dozen milliseconds.
+ *
+ * Only callers with no Electron fallback pay it. Everything else uses `playwrightPage()`,
+ * which still answers immediately and falls back rather than making every click on a tab
+ * Playwright cannot match — an incognito tab, say — wait for a page that will never appear.
  */
 const PW_PAGE_WAIT_MS = 2_000;
 
@@ -1057,7 +1062,7 @@ export class BrowserHub {
    * drive it — so this has no executeJavaScript fallback.
    */
   async drag(fromRef: string, to: { ref?: string; dx?: number; dy?: number }): Promise<string> {
-    const target = await this.pwTarget();
+    const target = await this.pwTarget({ wait: true });
     if (!target) throw new Error("drag needs Playwright attached; retry in a moment");
     const from = target.root.locator(`[data-lb-ref="${cssEscape(fromRef)}"]`).first();
     if (to.ref) {
@@ -1102,7 +1107,7 @@ export class BrowserHub {
     if (!files.length) throw new Error("Give at least one file path.");
     const missing = files.filter((f) => !fs.existsSync(f));
     if (missing.length) throw new Error(`No such file: ${missing.join(", ")}`);
-    const target = await this.pwTarget();
+    const target = await this.pwTarget({ wait: true });
     if (!target) throw new Error("upload_file needs Playwright attached; retry in a moment");
     await target.root
       .locator(`[data-lb-ref="${cssEscape(ref)}"]`)
@@ -1723,19 +1728,30 @@ export class BrowserHub {
     if (!this.pw) return null;
     const tab = this.active();
     if (!tab) return null;
-    // The URL is re-read each round so a navigation that lands mid-wait converges rather
-    // than leaving the loop chasing the address the tab has already left.
+    const url = this.activeUrl();
+    // Playwright has no target for a file: page.
+    if (!url || url.startsWith("file:")) return null;
+    const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
+    const page = pages.find((p) => safePageUrl(p) === url) || null;
+    if (page) this.hookDialogs(tab.id, page);
+    return page;
+  }
+
+  /**
+   * The Playwright page for the active tab, waiting up to `PW_PAGE_WAIT_MS` for one to show
+   * up. Only for tools that cannot do the job without Playwright, so that a short lag after a
+   * navigation is not reported to the assistant as "Playwright not attached".
+   *
+   * The URL is re-read each round, so a navigation landing mid-wait converges rather than
+   * leaving the loop chasing the address the tab has already left.
+   */
+  private async requirePlaywrightPage(): Promise<PwPage | null> {
     const deadline = Date.now() + PW_PAGE_WAIT_MS;
     for (;;) {
       const url = this.activeUrl();
-      // Playwright has no target for a file: page, so there is nothing to wait for.
       if (!url || url.startsWith("file:")) return null;
-      const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
-      const page = pages.find((p) => safePageUrl(p) === url) || null;
-      if (page) {
-        this.hookDialogs(tab.id, page);
-        return page;
-      }
+      const page = await this.playwrightPage();
+      if (page) return page;
       if (Date.now() >= deadline) return null;
       await sleep(100);
     }
@@ -1958,8 +1974,8 @@ export class BrowserHub {
    * Playwright is not attached, or when a frame is selected that Playwright cannot match —
    * the caller then falls back to `exec`, which addresses frames through Electron instead.
    */
-  private async pwTarget(): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
-    const page = await this.playwrightPage();
+  private async pwTarget(opts?: { wait?: boolean }): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
+    const page = opts?.wait ? await this.requirePlaywrightPage() : await this.playwrightPage();
     if (!page) return null;
     const tab = this.active();
     if (!tab || tab.frameIndex === null) return { page, root: page };

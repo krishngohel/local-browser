@@ -88,12 +88,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (url.pathname === "/shutdown") {
-    send(res, 200, TYPES[".txt"], "bye");
-    server.close();
-    return;
-  }
-
   const file = resolveFile(url.pathname);
   if (!file) {
     send(res, 403, TYPES[".txt"], "Forbidden");

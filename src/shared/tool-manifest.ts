@@ -185,7 +185,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "dialog",
     group: "toolsInteract",
-    description: "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
+    description: "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen. Covers dialogs raised by the main frame.",
   },
   { name: "frames", group: "toolsInteract", description: "List iframes on the page." },
   {

@@ -41,9 +41,18 @@ import { DialogPolicies } from "./dialogs";
  * and several of them are read during module initialisation.
  */
 const TEST_MODE = process.env.ECHO_TEST === "1";
-if (TEST_MODE && process.env.ECHO_TEST_USERDATA) {
-  fs.mkdirSync(process.env.ECHO_TEST_USERDATA, { recursive: true });
-  app.setPath("userData", process.env.ECHO_TEST_USERDATA);
+if (TEST_MODE) {
+  // Test mode rewrites the prefs and settings files and switches every tool group on. Doing
+  // that to the real profile would hand a full 69-tool surface to whatever is connected, so
+  // a throwaway directory is not optional.
+  const testUserData = process.env.ECHO_TEST_USERDATA;
+  if (!testUserData) {
+    console.error("ECHO_TEST=1 needs ECHO_TEST_USERDATA: refusing to run test mode against the real profile.");
+    app.exit(3);
+  } else {
+    fs.mkdirSync(testUserData, { recursive: true });
+    app.setPath("userData", testUserData);
+  }
 }
 
 applyChromeCommandLine();

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webFrame } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 const INTERACTIVE =
   'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
@@ -197,34 +197,37 @@ function answerDialog(type: string, message: string): DialogAnswer {
 }
 
 /**
- * Installed in the main world, where the page's own scripts see it. Written as source rather
- * than a function because the preload runs in the isolated world: only `webFrame` can reach
- * across, and it takes JavaScript text.
+ * Installs the three overrides in the main world, where the page's own scripts see them.
+ *
+ * `executeInMainWorld` serialises this function and hands `answerDialog` across as a proxy,
+ * so the callback lives only in the closure below — unlike `exposeInMainWorld`, it leaves
+ * nothing on `window` for the page to find or call. The function is re-compiled in the main
+ * world, so it must reference nothing outside its own arguments.
  */
-const DIALOG_SHIM = `(() => {
-  const bridge = window.__echoDialog;
-  if (!bridge || window.__echoDialogInstalled) return;
-  window.__echoDialogInstalled = true;
-  const ask = (type, message) => {
+function installDialogShim(answer: (type: string, message: string) => DialogAnswer): void {
+  const ask = (type: string, message: unknown): DialogAnswer => {
     try {
-      return bridge.answer(type, message == null ? '' : String(message));
-    } catch (e) {
+      return answer(type, message == null ? "" : String(message));
+    } catch {
       return { accept: false, promptText: null };
     }
   };
-  window.alert = function alert(message) { ask('alert', message); };
-  window.confirm = function confirm(message) { return ask('confirm', message).accept === true; };
-  window.prompt = function prompt(message, defaultValue) {
-    const answer = ask('prompt', message);
-    if (!answer.accept) return null;
-    if (answer.promptText != null) return String(answer.promptText);
-    return defaultValue == null ? '' : String(defaultValue);
+  window.alert = function alert(message?: unknown): void {
+    ask("alert", message);
   };
-})();`;
+  window.confirm = function confirm(message?: unknown): boolean {
+    return ask("confirm", message).accept === true;
+  };
+  window.prompt = function prompt(message?: unknown, defaultValue?: unknown): string | null {
+    const answered = ask("prompt", message);
+    if (!answered.accept) return null;
+    if (answered.promptText != null) return String(answered.promptText);
+    return defaultValue == null ? "" : String(defaultValue);
+  };
+}
 
 try {
-  contextBridge.exposeInMainWorld("__echoDialog", { answer: answerDialog });
-  void webFrame.executeJavaScript(DIALOG_SHIM);
+  contextBridge.executeInMainWorld({ func: installDialogShim, args: [answerDialog] });
 } catch {
-  /* without the bridge the page keeps Electron's own behaviour: every dialog is cancelled */
+  /* without the shim the page keeps Electron's own behaviour: every dialog is cancelled */
 }
