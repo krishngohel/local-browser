@@ -104,6 +104,30 @@ Echo must be **running** before you connect. Open **Settings** (⋮) → **Conne
 
 The green dot next to **MCP server** means Echo is listening. Copy the **This computer** URL if you need it manually: `http://127.0.0.1:18931/mcp`.
 
+### What the assistant can do
+
+Tools are grouped. Each group is a switch in **Settings → Tools** (the same switches appear under Transfers). Turning a group off removes those tools from the assistant entirely.
+
+| Group | Tools | On by default | What it covers |
+| --- | --- | --- | --- |
+| Always on | 1 | Yes | `echo_help`, the built-in guide |
+| Browse and click | 15 | Yes | tabs, navigate, snapshot, click, type, fill, scroll, wait |
+| Screenshots and live feed | 2 | Yes | `screenshot`, `watch` |
+| Search and article text | 2 | Yes | `search_web`, `extract_readable` |
+| Console and network | 2 | Yes | `console_errors`, `network_failures` |
+| Product tests | 5 | Yes | viewport, test start / assert / end |
+| Recordings | 5 | Yes | record, list, replay, delete |
+| Read and data | 8 | Yes | text, find, links, tables, forms, page info, HTML, PDF text |
+| Interaction depth | 10 | No | hover, drag, right-click, dialogs, frames, zoom, file upload |
+| Sessions and state | 9 | No | cookies, storage, history, downloads, bookmarks, clear site data |
+| Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
+
+That is **40 tools on a fresh install**, and 69 with every group on. `evaluate` (run JavaScript in the page) is one more, and it needs both Interaction depth and its own switch in Settings → Transfers.
+
+**Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
+
+Full descriptions: [skills/ECHO-SKILL-TREE.md](skills/ECHO-SKILL-TREE.md).
+
 ### Cursor
 
 1. In Echo: click **Connect** under Cursor.
@@ -176,12 +200,26 @@ The assistant should call tools such as `search_web`, `navigate`, and `snapshot`
 | Open Settings | ⋮ menu | ⋮ menu |
 | New tab | Ctrl+T | Cmd+T |
 | Focus address bar | Ctrl+L | Cmd+L |
+| Incognito tab | Ctrl+Shift+N | Cmd+Shift+N |
+| Command palette | Ctrl+K | Cmd+K |
+
+**Command palette:** **Ctrl+K** (Cmd+K on Mac) opens a search box over the page for tabs, history, bookmarks, settings, and actions.
+
+**Incognito tab:** **Ctrl+Shift+N** (Cmd+Shift+N on Mac) opens a tab with its own throwaway cookie jar. It writes no history and keeps nothing after you close it.
+
+**Assistant pill:** while an AI client is connected, a pill in the toolbar shows the tool it is running. Click **Pause** there to stop the assistant mid-flow. Paused tools return "Echo is paused by the user" until you resume.
+
+**Appearance:** Settings → Appearance. Light, dark, or follow the system, plus compact chrome and the home page.
+
+**Activity:** Settings → Activity. The last calls this session, with client, tool, how long it took, and the result. Clear it or pause from the same page.
+
+**Tools:** Settings → Tools. Every tool a connected assistant can call, its group, and whether it is on right now.
 
 **Open at login:** Settings → System → **Open at login** (starts hidden in the background).
 
 **Downloads, screenshots, recordings:** Settings → System → **Open folder**.
 
-**Token usage:** Settings → Transfers — turn off page photos, watch frames, or the skill tree on connect if you want fewer tokens. Reconnect the AI client after changing tool groups.
+**Token usage and tool count:** Settings → Transfers. Turn off page photos, watch frames, or the skill tree on connect if you want fewer tokens. A fresh install exposes **40 tools**; Cursor and some other clients get unreliable past roughly 40 tools across every MCP server at once, so turn groups off if that cap bites. Reconnect the AI client after changing tool groups.
 
 ---
 
@@ -282,15 +320,27 @@ Use **`Echo-Setup-*-arm64.exe`**, not the x64 installer. The x64 build may fail 
 
 On connect, Echo sends a **skill tree** (how to browse, search, screenshot, record, etc.) unless you turn that off in Settings → Transfers.
 
-**Browse:** `tabs_list`, `tabs_new`, `tabs_close`, `tabs_select`, `navigate`, `back`, `reload`, `snapshot`, `screenshot`, `watch`, `click`, `type`, `fill`, `press`, `scroll`, `select`, `wait_for`
+**Browse and click:** `tabs_list`, `tabs_new`, `tabs_close`, `tabs_select`, `navigate`, `back`, `reload`, `snapshot`, `click`, `type`, `fill`, `press`, `scroll`, `select`, `wait_for`
 
-**Search / extract:** `search_web`, `extract_readable`
+**Screenshots and live feed:** `screenshot`, `watch`
 
-**Debug:** `console_errors`, `network_failures`
+**Search and article text:** `search_web`, `extract_readable`
 
-**Test:** `viewport_set`, `test_start`, `test_assert_text`, `test_assert_url`, `test_end`
+**Console and network:** `console_errors`, `network_failures`
 
-**Record / replay:** `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
+**Product tests:** `viewport_set`, `test_start`, `test_assert_text`, `test_assert_url`, `test_end`
+
+**Recordings:** `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
+
+**Read and data:** `get_text`, `find`, `links`, `tables`, `forms`, `page_info`, `html`, `pdf_text`
+
+Three more groups are off until you turn them on in Settings → Tools:
+
+**Interaction depth:** `hover`, `double_click`, `right_click`, `drag`, `keyboard_shortcut`, `upload_file`, `dialog`, `frames`, `frame_select`, `zoom` (plus `evaluate` with its own switch)
+
+**Sessions and state:** `cookies_get`, `cookies_set`, `cookies_clear`, `storage_get`, `storage_set`, `clear_site_data`, `history_search`, `downloads_list`, `bookmarks`
+
+**Automation and QA:** `assert_visible`, `assert_url`, `assert_count`, `visual_baseline`, `visual_diff`, `perf_timing`, `network_log`, `schedule_recording`, `run_recording_steps`
 
 Always **`snapshot` before `click` / `type` / `fill`**. Refs look like `e0`, `e1`.
 
@@ -330,3 +380,5 @@ Mac and Windows builds are unsigned unless signing secrets are configured.
 | `npm run dist` | Installer for this OS |
 | `npm run dist:win` / `dist:mac` / `dist:linux` | Single-platform installer |
 | `npm run packaging:check` | Verify icon, legal files, Mac entitlements before build |
+| `npm run test:unit` | Unit tests (no browser needed) |
+| `npm run test` | Unit tests, end-to-end tool tests, and the Claude bridge test |

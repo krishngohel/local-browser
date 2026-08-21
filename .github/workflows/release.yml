@@ -34,8 +34,11 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run test:unit
+      # test:tools is not run here: it needs a display and Chrome's debugging port.
+      # Run it locally with `npm test` before tagging a release.
+      - run: npm run test:bridge # builds out/ as a side effect
       - run: npm run packaging:check
-      - run: npm run test:bridge
       - run: npm run ${{ matrix.dist }}
       - name: Test packaged Windows Claude bridge
         if: runner.os == 'Windows'

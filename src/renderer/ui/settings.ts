@@ -25,6 +25,7 @@ let rerender: (state: AppState) => void = () => {};
 let latest: AppState | null = null;
 /** The manifest never changes while the app runs, so it is fetched once. */
 let manifest: ToolManifestEntry[] | null = null;
+let manifestLoading = false;
 let toolsKey = "";
 let activityKey = "";
 
@@ -134,10 +135,12 @@ export function initSettings(onState: (state: AppState) => void): void {
   }
 
   document.getElementById("activity-clear")!.addEventListener("click", () => {
+    if (!window.lb) return;
     void window.lb.clearActivity().then(() => toast("Activity cleared", "ok"));
   });
 
   document.getElementById("activity-pause")!.addEventListener("click", async () => {
+    if (!window.lb) return;
     const paused = latest?.activity.paused === true;
     await window.lb.setPaused(!paused);
     toast(paused ? "Assistant resumed" : "Assistant paused", paused ? "ok" : "info");
@@ -327,8 +330,13 @@ function renderTools(next: AppState): void {
 }
 
 async function loadManifest(): Promise<void> {
-  if (manifest) return;
-  manifest = window.lb ? await window.lb.toolManifest().catch(() => TOOL_MANIFEST) : TOOL_MANIFEST;
+  if (manifest || manifestLoading) return;
+  manifestLoading = true;
+  try {
+    manifest = window.lb ? await window.lb.toolManifest().catch(() => TOOL_MANIFEST) : TOOL_MANIFEST;
+  } finally {
+    manifestLoading = false;
+  }
   if (latest) {
     toolsKey = "";
     renderTools(latest);
@@ -336,6 +344,22 @@ async function loadManifest(): Promise<void> {
 }
 
 /* --------------------------------------------------------------- activity */
+
+function activityHead(): HTMLElement {
+  return h(
+    "thead",
+    {},
+    h(
+      "tr",
+      {},
+      h("th", { text: "Time" }),
+      h("th", { text: "Client" }),
+      h("th", { text: "Tool" }),
+      h("th", { text: "Took" }),
+      h("th", { text: "Result" }),
+    ),
+  );
+}
 
 function renderActivity(next: AppState): void {
   const table = document.getElementById("activity-table") as HTMLTableElement | null;
@@ -350,8 +374,11 @@ function renderActivity(next: AppState): void {
   if (key === activityKey) return;
   activityKey = key;
 
+  const head = activityHead();
+
   if (!next.activity.recent.length) {
     table.replaceChildren(
+      head,
       h(
         "tbody",
         {},
@@ -371,19 +398,6 @@ function renderActivity(next: AppState): void {
     return;
   }
 
-  const head = h(
-    "thead",
-    {},
-    h(
-      "tr",
-      {},
-      h("th", { text: "Time" }),
-      h("th", { text: "Client" }),
-      h("th", { text: "Tool" }),
-      h("th", { text: "Took" }),
-      h("th", { text: "Result" }),
-    ),
-  );
   const body = h(
     "tbody",
     {},

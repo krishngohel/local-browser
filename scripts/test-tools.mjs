@@ -201,6 +201,22 @@ try {
       "mcp-port.txt",
     ),
   );
+  // The port file appears as soon as the server binds. Poll /health as well so the first
+  // tool call never races the rest of Echo's startup.
+  await waitFor(
+    async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/health`);
+        if (!res.ok) return false;
+        const body = await res.json();
+        return body && body.ok === true;
+      } catch {
+        return false;
+      }
+    },
+    30000,
+    "Echo's /health to report ok",
+  );
   console.log(`\nEcho MCP on port ${port}, profile ${userData}\n`);
 
   const client = new Client({ name: "echo-e2e", version: "1" });
