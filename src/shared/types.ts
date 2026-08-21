@@ -75,6 +75,23 @@ export type AppSettings = {
   evaluateEnabled: boolean;
 };
 
+export type ActivityEntry = {
+  id: number;
+  tool: string;
+  client: string;
+  startedAt: string;
+  ms: number;
+  ok: boolean;
+  summary: string;
+};
+
+export type ActivityState = {
+  paused: boolean;
+  count: number;
+  running: string | null;
+  recent: ActivityEntry[];
+};
+
 export type AppState = {
   tabs: TabInfo[];
   activeTabId: string | null;
@@ -109,6 +126,7 @@ export type AppState = {
   transfer: TransferPrefs;
   platform: string;
   toolCount: number;
+  activity: ActivityState;
 };
 
 export type ConnectResult = {

@@ -31,6 +31,8 @@ declare global {
       setAutostart: (enabled: boolean) => Promise<boolean>;
       setTransfer: (next: Partial<TransferPrefs>) => Promise<TransferPrefs>;
       setSettings: (open: boolean) => Promise<void>;
+      setPaused: (p: boolean) => Promise<boolean>;
+      clearActivity: () => Promise<void>;
       openMenu: () => Promise<void>;
       onState: (cb: (state: AppState) => void) => () => void;
       onOpenSettings: (cb: (section?: string) => void) => void;

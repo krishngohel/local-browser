@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld("lb", {
   setAutostart: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("autostart:set", enabled),
   setTransfer: (next: Partial<TransferPrefs>): Promise<TransferPrefs> => ipcRenderer.invoke("transfer:set", next),
   setSettings: (open: boolean) => ipcRenderer.invoke("settings:set", open),
+  setPaused: (p: boolean): Promise<boolean> => ipcRenderer.invoke("activity:pause", p),
+  clearActivity: () => ipcRenderer.invoke("activity:clear"),
   openMenu: () => ipcRenderer.invoke("menu:app"),
   onState: (cb: (state: AppState) => void) => {
     const listener = (_event: unknown, state: AppState) => cb(state);

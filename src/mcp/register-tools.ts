@@ -3,6 +3,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BrowserHub } from "../main/browser";
 import type { TestRunner } from "../main/test-runs";
 import type { Recorder } from "../main/recordings";
+import type { ActivityLog } from "../main/activity";
 import { loadSkillTree, registerSkillDocs } from "../main/skill-tree";
 import { getTransferPrefs } from "../main/transfer-prefs";
 
@@ -24,7 +25,7 @@ function photo(caption: string, jpeg: Buffer) {
   };
 }
 
-export function registerTools(server: McpServer, hub: BrowserHub, tests: TestRunner, recorder: Recorder): void {
+export function registerTools(server: McpServer, hub: BrowserHub, tests: TestRunner, recorder: Recorder, _activity: ActivityLog): void {
   const prefs = getTransferPrefs();
   registerSkillDocs(server);
 

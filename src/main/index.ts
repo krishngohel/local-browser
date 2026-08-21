@@ -25,6 +25,7 @@ import type { AppState, PlayResult, RecordedAction, TransferPrefs } from "../sha
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
 import { getSettings } from "./settings";
+import { ActivityLog } from "./activity";
 
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
@@ -34,6 +35,7 @@ app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 const hub = new BrowserHub();
 const tests = new TestRunner(hub);
 const recorder = new Recorder();
+const activity = new ActivityLog();
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let mcpListening = false;
@@ -68,6 +70,7 @@ function getState(): AppState {
     transfer: getTransferPrefs(),
     platform: process.platform,
     toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
+    activity: activity.state(),
   };
 }
 
@@ -310,6 +313,11 @@ function registerIpc(): void {
     broadcast();
     return prefs;
   });
+  ipcMain.handle("activity:pause", (_e, paused: boolean) => {
+    activity.setPaused(Boolean(paused));
+    return activity.isPaused();
+  });
+  ipcMain.handle("activity:clear", () => activity.clear());
   ipcMain.handle("settings:set", (_e, open: boolean) => {
     hub.setSettingsOpen(open);
     broadcast();
@@ -496,11 +504,12 @@ if (!gotLock) {
     token = getOrCreateToken();
     setMcpSessionListener(broadcast);
     recorder.setOnChange(broadcast);
+    activity.setOnChange(broadcast);
     hub.setRecorder(recorder);
     registerIpc();
 
     try {
-      await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder), app.getVersion());
+      await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder, activity), app.getVersion());
       mcpListening = true;
       writeMcpPortFile(mcpPort());
       broadcast();
