@@ -69,6 +69,16 @@ export class TestRunner {
     return this.record("assert_url", ok, ok ? `URL matches ${pattern}` : `URL ${url} does not match ${pattern}`);
   }
 
+  /**
+   * The assertion sink for the QA tools. Those tools are useful on their own — a bare
+   * `assert_visible` during exploration is a legitimate question — so this records into the
+   * run's report when one is open and otherwise just answers, rather than demanding a run.
+   */
+  assertGeneric(name: string, ok: boolean, message: string): AssertionResult {
+    if (!this.run) return { ok, message };
+    return this.record(name, ok, message);
+  }
+
   async end(): Promise<string> {
     this.requireRun();
     const dir = this.run!.dir;

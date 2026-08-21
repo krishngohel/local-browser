@@ -17,6 +17,7 @@ import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
 import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
+  PERF_TIMING_SCRIPT,
   getTextScript,
   htmlScript,
   keyChordScript,
@@ -24,6 +25,7 @@ import {
   mouseEventScript,
   mouseEventSelectorsScript,
   tablesScript,
+  visibleScript,
 } from "./page-scripts";
 import { extractPdfText, pdfPageCount } from "./pdf-text";
 import type { Recorder } from "./recordings";
@@ -79,11 +81,35 @@ export type PageInfo = {
   cookiesCount: number;
 };
 
+/** One request as `network_log` reports it. `null` fields mean the value was not available. */
+export type NetworkEntry = {
+  method: string;
+  url: string;
+  status: number | null;
+  type: string;
+  ms: number | null;
+  bytes: number | null;
+  /** ISO timestamp of when the request started. */
+  at: string;
+  error?: string;
+};
+
+export type PerfTiming = {
+  ttfb: number | null;
+  domContentLoaded: number | null;
+  load: number | null;
+  lcp: number | null;
+  cls: number | null;
+  resources: number;
+};
+
 type Tab = {
   id: string;
   view: BrowserView;
   console: string[];
   networkFailures: string[];
+  /** Ring of the last `NETWORK_LOG_CAP` requests this tab made, oldest first. */
+  network: NetworkEntry[];
   favicon: string | null;
   incognito: boolean;
   partition: string;
@@ -100,6 +126,10 @@ type Tab = {
 };
 
 const HOME_URL = "https://www.google.com/";
+/** Per-tab request ring. Matches the `network_log` cap in the tool contract. */
+const NETWORK_LOG_CAP = 200;
+/** In-flight requests waiting for a completion event. Bounded so a stalled tab cannot leak. */
+const PENDING_REQUEST_CAP = 600;
 const THUMB_TTL_MS = 10_000;
 const THUMB_CAPTURE_TIMEOUT_MS = 2_000;
 
@@ -121,6 +151,10 @@ export class BrowserHub {
   private chromeHeight = CHROME_HEIGHT;
   private thumbs = new Map<string, { at: number; data: string }>();
   private headerSessions = new WeakSet<Session>();
+  /** Sessions whose webRequest network listeners are already installed. */
+  private networkSessions = new WeakSet<Session>();
+  /** Started-but-unfinished requests, keyed by `details.id`, so timing survives to onCompleted. */
+  private pendingRequests = new Map<number, { tabId: string; method: string; url: string; type: string; start: number }>();
   private dialogs = new DialogPolicies();
   /** Tab ids already hooked — a fast path in front of `dialogHookedPages`. */
   private dialogHooked = new Set<string>();
@@ -214,6 +248,7 @@ export class BrowserHub {
   private prepareSession(ses: Session): void {
     applyChromeSession(ses);
     this.trackContentType(ses);
+    this.trackNetwork(ses);
     ses.on("will-download", (_event, item) => {
       const dest = path.join(downloadsDir(), item.getFilename());
       item.setSavePath(dest);
@@ -255,6 +290,118 @@ export class BrowserHub {
     });
   }
 
+  /** The tab that owns a webContents id, or undefined for requests with no tab (workers). */
+  private tabForWebContents(id: number | undefined): Tab | undefined {
+    if (id === undefined) return undefined;
+    for (const tab of this.tabs.values()) {
+      if (!tab.view.webContents.isDestroyed() && tab.view.webContents.id === id) return tab;
+    }
+    return undefined;
+  }
+
+  private pushNetwork(tab: Tab, entry: NetworkEntry): void {
+    tab.network.push(entry);
+    if (tab.network.length > NETWORK_LOG_CAP) tab.network = tab.network.slice(-NETWORK_LOG_CAP);
+  }
+
+  /** Content-Length off the response, when the server sent one. */
+  private static bytesOf(headers: Record<string, string[]> | undefined): number | null {
+    if (!headers) return null;
+    const key = Object.keys(headers).find((k) => k.toLowerCase() === "content-length");
+    const value = key ? Number(headers[key]?.[0]) : NaN;
+    return Number.isFinite(value) ? value : null;
+  }
+
+  /**
+   * The per-tab request log, plus the main-frame failures `network_failures` reports.
+   *
+   * Registered once per session — Electron allows a single listener per `webRequest` event
+   * per session, so anything registered per tab would clobber the tab before it. Each event
+   * carries a `webContentsId`, which is how an entry finds its tab.
+   */
+  private trackNetwork(ses: Session): void {
+    if (this.networkSessions.has(ses)) return;
+    this.networkSessions.add(ses);
+
+    ses.webRequest.onBeforeRequest((details, callback) => {
+      try {
+        const tab = this.tabForWebContents(details.webContentsId);
+        if (tab) {
+          if (this.pendingRequests.size >= PENDING_REQUEST_CAP) {
+            // Oldest first: requests that never reported a completion event.
+            const oldest = this.pendingRequests.keys().next();
+            if (!oldest.done) this.pendingRequests.delete(oldest.value);
+          }
+          this.pendingRequests.set(details.id, {
+            tabId: tab.id,
+            method: details.method,
+            url: details.url,
+            type: details.resourceType,
+            start: Date.now(),
+          });
+        }
+      } catch {
+        /* bookkeeping must never block a request */
+      }
+      callback({});
+    });
+
+    ses.webRequest.onCompleted((details) => {
+      try {
+        const started = this.pendingRequests.get(details.id);
+        this.pendingRequests.delete(details.id);
+        const tab =
+          this.tabForWebContents(details.webContentsId) ??
+          (started ? this.tabs.get(started.tabId) : undefined);
+        if (!tab) return;
+        if (details.resourceType === "mainFrame" && details.statusCode >= 400) {
+          tab.networkFailures.push(`${details.statusCode} ${details.url}`.slice(0, 400));
+          tab.networkFailures = tab.networkFailures.slice(-80);
+        }
+        const at = started ? new Date(started.start) : new Date();
+        this.pushNetwork(tab, {
+          method: details.method,
+          url: details.url.slice(0, 1000),
+          status: details.statusCode,
+          type: details.resourceType,
+          ms: started ? Date.now() - started.start : null,
+          bytes: BrowserHub.bytesOf(details.responseHeaders),
+          at: at.toISOString(),
+        });
+      } catch {
+        /* ignore */
+      }
+    });
+
+    ses.webRequest.onErrorOccurred((details) => {
+      try {
+        const started = this.pendingRequests.get(details.id);
+        this.pendingRequests.delete(details.id);
+        const tab =
+          this.tabForWebContents(details.webContentsId) ??
+          (started ? this.tabs.get(started.tabId) : undefined);
+        if (!tab) return;
+        if (details.resourceType === "mainFrame") {
+          tab.networkFailures.push(`${details.error} ${details.url}`.slice(0, 400));
+          tab.networkFailures = tab.networkFailures.slice(-80);
+        }
+        const at = started ? new Date(started.start) : new Date();
+        this.pushNetwork(tab, {
+          method: details.method,
+          url: details.url.slice(0, 1000),
+          status: null,
+          type: details.resourceType,
+          ms: started ? Date.now() - started.start : null,
+          bytes: null,
+          at: at.toISOString(),
+          error: String(details.error).slice(0, 200),
+        });
+      } catch {
+        /* ignore */
+      }
+    });
+  }
+
   async connectPlaywright(): Promise<boolean> {
     if (this.pw) return true;
     const endpoint = `http://127.0.0.1:${CDP_PORT}`;
@@ -291,6 +438,7 @@ export class BrowserHub {
       view,
       console: [],
       networkFailures: [],
+      network: [],
       favicon: null,
       incognito,
       partition,
@@ -1171,6 +1319,14 @@ export class BrowserHub {
     };
   }
 
+  /**
+   * Visibility of one snapshot ref: true/false, or null when the ref is not on the page —
+   * usually a stale snapshot rather than a hidden element, which is worth saying out loud.
+   */
+  async elementVisible(ref: string): Promise<boolean | null> {
+    return (await this.exec(visibleScript(ref))) as boolean | null;
+  }
+
   async pageText(): Promise<string> {
     return (await this.exec(`document.body ? document.body.innerText : ''`)) as string;
   }
@@ -1410,6 +1566,24 @@ export class BrowserHub {
     return [...(this.active()?.networkFailures ?? [])];
   }
 
+  /** The active tab's request ring, newest first, optionally filtered by URL substring. */
+  networkLog(opts?: { filter?: string; limit?: number }): NetworkEntry[] {
+    const all = this.active()?.network ?? [];
+    const filter = opts?.filter?.trim().toLowerCase() ?? "";
+    const limit = Math.max(1, Math.min(opts?.limit ?? 50, NETWORK_LOG_CAP));
+    const matched = filter ? all.filter((e) => e.url.toLowerCase().includes(filter)) : all;
+    return matched.slice(-limit).reverse();
+  }
+
+  /**
+   * Navigation timing for the active tab's main frame, plus LCP/CLS from the page preload.
+   * Read from the main frame regardless of `frame_select` — the numbers describe the page.
+   */
+  async perfTiming(): Promise<PerfTiming> {
+    const wc = this.requireActive().view.webContents;
+    return (await wc.executeJavaScript(PERF_TIMING_SCRIPT)) as PerfTiming;
+  }
+
   async setViewport(width: number, height: number): Promise<void> {
     const wc = this.requireActive().view.webContents as Electron.WebContents & {
       enableDeviceEmulation?: (opts: {
@@ -1513,18 +1687,10 @@ export class BrowserHub {
         tab.console = tab.console.slice(-80);
       }
     });
-    wc.session.webRequest.onCompleted((details) => {
-      if (details.resourceType === "mainFrame" && details.statusCode >= 400) {
-        tab.networkFailures.push(`${details.statusCode} ${details.url}`.slice(0, 400));
-        tab.networkFailures = tab.networkFailures.slice(-80);
-      }
-    });
-    wc.session.webRequest.onErrorOccurred((details) => {
-      if (details.resourceType === "mainFrame") {
-        tab.networkFailures.push(`${details.error} ${details.url}`.slice(0, 400));
-        tab.networkFailures = tab.networkFailures.slice(-80);
-      }
-    });
+    // Network events are NOT wired up here. `webRequest` listeners are session-scoped and a
+    // session allows only one per event, so registering them per tab meant every new tab
+    // silently replaced the previous tab's listener. They live in `trackNetwork` instead,
+    // once per session, routed to the right tab by `webContentsId`.
   }
 
   private active(): Tab | undefined {

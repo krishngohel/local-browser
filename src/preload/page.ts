@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 const INTERACTIVE =
   'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
@@ -127,3 +127,45 @@ window.addEventListener(
 );
 
 window.addEventListener("blur", () => flushType(false), true);
+
+// --- Web vitals -------------------------------------------------------------------------
+//
+// LCP and CLS can only be read by an observer that was watching from the start of the page,
+// so they are collected here rather than by a script the hub injects later. The values live
+// in the isolated world; the page (and so `perf_timing`, which evaluates in the main world)
+// reaches them through one exposed getter. An object of live numbers cannot cross the bridge
+// — only the function can — hence `__echoPerf.get()` rather than `__echoPerf.lcp`.
+
+let lcp: number | null = null;
+let cls: number | null = null;
+
+function observe(type: string, onEntry: (entry: PerformanceEntry) => void): void {
+  try {
+    // `buffered` replays entries that fired before this observer existed.
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) onEntry(entry);
+    }).observe({ type, buffered: true } as PerformanceObserverInit);
+  } catch {
+    /* the browser may not support this entry type; the value simply stays null */
+  }
+}
+
+observe("largest-contentful-paint", (entry) => {
+  // Every LCP entry supersedes the last, so the newest one wins.
+  lcp = Math.round(entry.startTime * 100) / 100;
+});
+
+observe("layout-shift", (entry) => {
+  const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
+  // Shifts within 500ms of a user interaction are expected, and Core Web Vitals excludes them.
+  if (shift.hadRecentInput) return;
+  cls = Math.round(((cls ?? 0) + (shift.value ?? 0)) * 10000) / 10000;
+});
+
+try {
+  contextBridge.exposeInMainWorld("__echoPerf", {
+    get: () => ({ lcp, cls }),
+  });
+} catch {
+  /* already exposed, or context isolation is off; perf_timing falls back to nulls */
+}

@@ -53,6 +53,13 @@ export function recordingsDir(): string {
   return dir;
 }
 
+/** Where `visual_baseline` keeps its named screenshots, alongside the diffs made from them. */
+export function baselinesDir(): string {
+  const dir = path.join(userDataDir(), "baselines");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 export function tokenPath(): string {
   return path.join(userDataDir(), "mcp-token.txt");
 }
