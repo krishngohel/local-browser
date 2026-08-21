@@ -55,10 +55,17 @@ if (!mac) {
 }
 
 // Built output: the renderer and main bundle must carry the 1.1 surface.
-const bundled = [
-  { rel: "out/renderer/index.html", needles: ['id="assistant-pill"', 'id="section-tools"'] },
-  { rel: "out/main/index.js", needles: ['"toolsQa"', '"settings.json"'] },
-];
+// Skipped (with a note, not a failure) on a clean checkout so this script still runs standalone.
+const outDir = path.join(root, "out");
+const bundled = fs.existsSync(outDir)
+  ? [
+      { rel: "out/renderer/index.html", needles: ['id="assistant-pill"', 'id="section-tools"'] },
+      { rel: "out/main/index.js", needles: ['"toolsQa"', '"settings.json"'] },
+    ]
+  : [];
+if (!bundled.length) {
+  console.log("NOTE: out/ is missing, so the built-output checks were skipped. Run npm run build:prod first to check them.");
+}
 for (const { rel, needles } of bundled) {
   const file = path.join(root, rel);
   if (!fs.existsSync(file)) {

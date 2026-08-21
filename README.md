@@ -122,7 +122,7 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 | Sessions and state | 9 | No | cookies, storage, history, downloads, bookmarks, clear site data |
 | Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
 
-That is **40 tools on a fresh install**, and 69 with every group on. `evaluate` (run JavaScript in the page) is one more, and it needs both Interaction depth and its own switch in Settings → Transfers.
+That adds up to **40 tools on a fresh install** and **68 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **69**, and it needs both Interaction depth and its own switch in Settings → Transfers.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
 
@@ -379,6 +379,6 @@ Mac and Windows builds are unsigned unless signing secrets are configured.
 | `npm run dev` | Build + run unpackaged |
 | `npm run dist` | Installer for this OS |
 | `npm run dist:win` / `dist:mac` / `dist:linux` | Single-platform installer |
-| `npm run packaging:check` | Verify icon, legal files, Mac entitlements before build |
+| `npm run packaging:check` | Verify packaging files and the built output (run after `npm run build:prod`) |
 | `npm run test:unit` | Unit tests (no browser needed) |
 | `npm run test` | Unit tests, end-to-end tool tests, and the Claude bridge test |
