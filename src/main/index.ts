@@ -22,6 +22,7 @@ import { lanIPv4s } from "./net";
 import { getOrCreateToken } from "./token";
 import { TestRunner } from "./test-runs";
 import { Recorder } from "./recordings";
+import { Scheduler } from "./scheduler";
 import type { AppSettings, AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
@@ -46,6 +47,7 @@ let history: History;
 let bookmarks: Bookmarks;
 let downloads: Downloads;
 let dialogs: DialogPolicies;
+let scheduler: Scheduler;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let mcpListening = false;
@@ -562,6 +564,18 @@ if (!gotLock) {
     recorder.setOnChange(broadcast);
     activity.setOnChange(broadcast);
     hub.setRecorder(recorder);
+    // A scheduled replay must not fight a live recording or another replay, so a job that
+    // arrives at a busy moment is reported as skipped and simply waits for its next slot.
+    scheduler = new Scheduler(userDataDir(), async (id) => {
+      if (recorder.isRecording()) return { ok: false, message: "Skipped: a recording is in progress." };
+      if (recorder.isPlaying()) return { ok: false, message: "Skipped: a recording is already playing." };
+      try {
+        return await recorder.play(id, hub);
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    scheduler.start();
     registerIpc();
 
     try {
@@ -580,6 +594,7 @@ if (!gotLock) {
             settings: getSettings,
             prefs: getTransferPrefs(),
             dialogs,
+            scheduler,
           }),
         app.getVersion(),
       );
@@ -633,6 +648,7 @@ if (!gotLock) {
 
 app.on("before-quit", () => {
   quitRequested = true;
+  scheduler?.stop();
 });
 
 app.on("window-all-closed", () => {

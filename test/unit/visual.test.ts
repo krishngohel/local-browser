@@ -154,3 +154,19 @@ test("diff marks changed pixels red and dims the rest", () => {
 test("diff rejects a size mismatch", () => {
   assert.throws(() => diff(solid(2, 2, [0, 0, 0, 255]), solid(3, 2, [0, 0, 0, 255])), /size/i);
 });
+
+test("encodePng writes a real CRC32 over each chunk's type and data", () => {
+  const buf = encodePng(solid(3, 2, [1, 2, 3, 255]));
+  const seen: string[] = [];
+  let at = 8;
+  while (at + 8 <= buf.length) {
+    const length = buf.readUInt32BE(at);
+    const type = buf.toString("ascii", at + 4, at + 8);
+    const typeAndData = buf.subarray(at + 4, at + 8 + length);
+    // node:zlib's own CRC32, so the encoder is checked against the platform, not itself.
+    assert.equal(buf.readUInt32BE(at + 8 + length), zlib.crc32(typeAndData), `${type} CRC`);
+    seen.push(type);
+    at += 12 + length;
+  }
+  assert.deepEqual(seen, ["IHDR", "IDAT", "IEND"]);
+});

@@ -32,7 +32,8 @@ function verdict(ok: boolean, message: string) {
 }
 
 /**
- * Automation and QA: assertions, visual regression, page timing, and the request log.
+ * Automation and QA: assertions, visual regression, page timing, the request log, and
+ * scheduled or partial replay of saved recordings.
  *
  * The assertions work with or without an open test run — they record into the run's report
  * when `test_start` has been called, and simply answer when it has not.
@@ -113,14 +114,17 @@ export function registerQa(server: McpServer, deps: ToolDeps): void {
         if (!args.role && !args.text?.trim()) {
           return err(new Error("Give a role or some text to count."));
         }
-        const matches = await hub.find({ role: args.role, text: args.text, limit: 200 });
+        const matches = await hub.find({ role: args.role, text: args.text });
         const ok = matches.length === args.expected;
         const what = [args.role && `role ${args.role}`, args.text && `text "${args.text}"`]
           .filter(Boolean)
           .join(" and ");
+        // `find` searches the snapshot, so this counts interactive elements, not every node
+        // in the DOM. Saying so keeps a PASS from reading as a whole-page count.
+        const where = "among the interactive elements in the snapshot";
         const message = ok
-          ? `${matches.length} element(s) match ${what}`
-          : `Expected ${args.expected} element(s) matching ${what}, found ${matches.length}`;
+          ? `${matches.length} element(s) match ${what} ${where}`
+          : `Expected ${args.expected} element(s) matching ${what} ${where}, found ${matches.length}`;
         const result = tests.assertGeneric("assert_count", ok, message);
         return verdict(result.ok, result.message);
       } catch (e) {
@@ -223,6 +227,57 @@ export function registerQa(server: McpServer, deps: ToolDeps): void {
           );
         }
         return text(JSON.stringify(entries, null, 2));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  define(
+    server,
+    deps,
+    "schedule_recording",
+    "Replay a saved recording on an interval while Echo is open. action add/list/cancel.",
+    {
+      action: z.enum(["add", "list", "cancel"]).default("add"),
+      recordingId: z.string().optional(),
+      everyMinutes: z.number().optional(),
+      id: z.string().optional(),
+    },
+    async ({ action, recordingId, everyMinutes, id }) => {
+      try {
+        if (action === "list") return text(JSON.stringify(deps.scheduler.list(), null, 2));
+        if (action === "cancel") {
+          if (!id) return err(new Error("Give the schedule id to cancel. Call action list to see them."));
+          if (!deps.scheduler.cancel(id)) return err(new Error(`No schedule ${id}.`));
+          return text(`Cancelled ${id}`);
+        }
+        if (!recordingId || everyMinutes === undefined) {
+          return err(new Error("add needs recordingId and everyMinutes. Call recordings_list for ids."));
+        }
+        // Throws on an unknown id, so a schedule can never point at a recording that is gone.
+        deps.recorder.load(recordingId);
+        return text(JSON.stringify(deps.scheduler.add(recordingId, everyMinutes), null, 2));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  define(
+    server,
+    deps,
+    "run_recording_steps",
+    "Play a slice of a saved recording (from step index, optional to).",
+    {
+      id: z.string(),
+      from: z.number().int().min(0).optional(),
+      to: z.number().int().min(0).optional(),
+    },
+    async ({ id, from, to }) => {
+      try {
+        const result = await deps.recorder.playRange(id, from ?? 0, to, hub);
+        return { isError: !result.ok, content: [{ type: "text" as const, text: result.message }] };
       } catch (e) {
         return err(e);
       }

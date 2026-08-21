@@ -87,7 +87,9 @@ export function decodePng(buf: Buffer): Rgba {
 
   const bpp = colorType === 6 ? 4 : 3;
   const stride = width * bpp;
-  const raw = zlib.inflateSync(Buffer.concat(idat));
+  // The IHDR dimensions bound the inflated size, so a zip bomb in IDAT cannot allocate
+  // more than one image worth of scanlines.
+  const raw = zlib.inflateSync(Buffer.concat(idat), { maxOutputLength: height * (stride + 1) });
   if (raw.length < height * (stride + 1)) throw new Error("PNG image data is short.");
 
   // Unfilter in place into one scanline-sized pair of buffers, then widen to RGBA.

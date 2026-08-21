@@ -107,16 +107,6 @@ export const PAGE_INFO_SCRIPT = `(() => {
 })()`;
 
 /**
- * `outerHTML` of one ref, or of the whole document, sliced to `maxChars` in the page so a
- * large DOM never crosses IPC in full. Returns null when the ref is gone.
- */
-/**
- * Navigation timing plus the web vitals the page preload has been accumulating.
- *
- * `__echoPerf` is a contextBridge getter, so it is a function call rather than a plain
- * object read; on a page that loaded before the preload existed it is simply absent.
- */
-/**
  * Is the ref's element on screen? `null` means the ref itself is unknown to the page, which
  * an assertion reports differently from an element that is present but hidden.
  */
@@ -128,6 +118,12 @@ export const visibleScript = (ref: string): string => `(() => {
   return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden';
 })()`;
 
+/**
+ * Navigation timing plus the web vitals the page preload has been accumulating.
+ *
+ * `__echoPerf` is a contextBridge getter, so it is a function call rather than a plain
+ * object read; on a page that loaded before the preload existed it is simply absent.
+ */
 export const PERF_TIMING_SCRIPT = `(() => {
   const round = (v) => (typeof v === 'number' && isFinite(v) && v > 0 ? Math.round(v * 100) / 100 : null);
   const nav = performance.getEntriesByType('navigation')[0] || null;
@@ -147,6 +143,10 @@ export const PERF_TIMING_SCRIPT = `(() => {
   };
 })()`;
 
+/**
+ * `outerHTML` of one ref, or of the whole document, sliced to `maxChars` in the page so a
+ * large DOM never crosses IPC in full. Returns null when the ref is gone.
+ */
 export const htmlScript = (ref: string | null, maxChars: number): string => `(() => {
   const el = ${ref ? `document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)})` : "document.documentElement"};
   if (!el) return null;

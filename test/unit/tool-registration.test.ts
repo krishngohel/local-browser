@@ -9,7 +9,7 @@ import type { ToolDeps } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
 import type { TransferPrefs } from "../../src/shared/types";
 
-/** Groups whose tools exist today. Later tasks add: toolsQa. */
+/** Every group in the manifest — all of them are implemented. */
 const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "always",
   "toolsBrowse",
@@ -21,6 +21,7 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "toolsRead",
   "toolsInteract",
   "toolsState",
+  "toolsQa",
 ];
 
 type Registered = { name: string; description: string };
@@ -49,6 +50,7 @@ function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
     settings: () => ({ ...DEFAULT_SETTINGS, evaluateEnabled: opts.evaluateEnabled ?? true }),
     prefs: allGroupsOn,
     dialogs: new DialogPolicies(),
+    scheduler: {} as never,
   };
   registerTools(server as never, deps);
   return registered;

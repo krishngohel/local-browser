@@ -164,22 +164,41 @@ export class Recorder {
   }
 
   async play(id: string, hub: BrowserHub): Promise<PlayResult> {
+    return this.playRange(id, 0, undefined, hub);
+  }
+
+  /**
+   * Plays a slice of a recording: `from` is a 0-based inclusive step index, `to` is
+   * exclusive and defaults to the end. A slice outside the recording throws, the same way
+   * an unknown id does, so the caller reports it rather than silently playing nothing.
+   */
+  async playRange(id: string, from: number, to: number | undefined, hub: BrowserHub): Promise<PlayResult> {
     if (this.current) throw new Error("Stop recording before playing a recording.");
     if (this.playing) throw new Error("A recording is already playing.");
     const rec = this.load(id);
+    const total = rec.actions.length;
+    const start = Number.isInteger(from) ? from : NaN;
+    const end = to === undefined ? total : Number.isInteger(to) ? to : NaN;
+    if (!(start >= 0) || start >= total) {
+      throw new Error(`“${rec.name}” has ${total} step(s); from ${from} is out of range.`);
+    }
+    if (!(end > start) || end > total) {
+      throw new Error(`“${rec.name}” has ${total} step(s); to ${to} is out of range.`);
+    }
+    const steps = rec.actions.slice(start, end);
     this.playing = true;
     this.onChange();
     try {
-      for (let i = 0; i < rec.actions.length; i++) {
-        const action = rec.actions[i];
+      for (let i = 0; i < steps.length; i++) {
+        const action = steps[i];
         try {
           await this.run(hub, action);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          throw new Error(`Stopped at step ${i + 1} (${action.type}): ${reason}`);
+          throw new Error(`Stopped at step ${start + i + 1} (${action.type}): ${reason}`);
         }
       }
-      return { ok: true, message: `Played “${rec.name}” (${rec.actions.length} steps)` };
+      return { ok: true, message: `Played “${rec.name}” steps ${start + 1}–${end}` };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     } finally {

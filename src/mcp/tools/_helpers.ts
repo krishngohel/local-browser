@@ -8,6 +8,7 @@ import type { History } from "../../main/history";
 import type { Bookmarks } from "../../main/bookmarks";
 import type { Downloads } from "../../main/downloads";
 import type { DialogPolicies } from "../../main/dialogs";
+import type { Scheduler } from "../../main/scheduler";
 import type { AppSettings, TransferPrefs } from "../../shared/types";
 
 export type ToolContent =
@@ -31,8 +32,8 @@ export type ToolDeps = {
   prefs: TransferPrefs;
   /** Per-tab alert/confirm/prompt policies, shared with the hub. */
   dialogs: DialogPolicies;
-  /** Task 9 fills this in with Scheduler. */
-  scheduler?: unknown;
+  /** Interval replay of recordings, for `schedule_recording`. */
+  scheduler: Scheduler;
 };
 
 export function text(value: string): ToolResult {
