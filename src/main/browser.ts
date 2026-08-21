@@ -89,6 +89,14 @@ type Tab = {
   partition: string;
   /** Content-Type of the last main-frame response, for spotting PDFs. */
   contentType: string | null;
+  /**
+   * Index into this tab's `mainFrame.framesInSubtree` that snapshot/read/click target, or
+   * null for the main frame. Per tab, so a frame selected on one tab cannot silently scope
+   * reads on another. `frameUrl` is kept alongside it because Playwright's own frame order
+   * can differ from Electron's, so the URL is the reliable way to line them up.
+   */
+  frameIndex: number | null;
+  frameUrl: string | null;
 };
 
 const HOME_URL = "https://www.google.com/";
@@ -114,15 +122,14 @@ export class BrowserHub {
   private thumbs = new Map<string, { at: number; data: string }>();
   private headerSessions = new WeakSet<Session>();
   private dialogs = new DialogPolicies();
-  /** Tab ids whose Playwright page already has a `dialog` listener, so it is attached once. */
+  /** Tab ids already hooked — a fast path in front of `dialogHookedPages`. */
   private dialogHooked = new Set<string>();
   /**
-   * Index into `mainFrame.framesInSubtree` that snapshot/read/click currently target, or
-   * null for the main frame. `frameUrl` is kept alongside it because Playwright's own frame
-   * order can differ from Electron's, so the URL is the reliable way to line them up.
+   * The authority on dialog attachment. Tabs are matched to Playwright pages by URL, so two
+   * tabs on the same URL can resolve to the same page; keying on the page object itself is
+   * what stops a second listener being added to it.
    */
-  private frameIndex: number | null = null;
-  private frameUrl: string | null = null;
+  private dialogHookedPages = new WeakSet<PwPage>();
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
@@ -288,6 +295,8 @@ export class BrowserHub {
       incognito,
       partition,
       contentType: null,
+      frameIndex: null,
+      frameUrl: null,
     };
     installChromePageShim(view.webContents);
     this.attachListeners(tab);
@@ -633,11 +642,12 @@ export class BrowserHub {
    * goes through here so a selected frame is honoured consistently.
    */
   private async exec(js: string): Promise<unknown> {
-    const wc = this.requireActive().view.webContents;
-    if (this.frameIndex === null) return wc.executeJavaScript(js);
-    const frame = wc.mainFrame.framesInSubtree[this.frameIndex];
+    const tab = this.requireActive();
+    const wc = tab.view.webContents;
+    if (tab.frameIndex === null) return wc.executeJavaScript(js);
+    const frame = wc.mainFrame.framesInSubtree[tab.frameIndex];
     if (!frame) {
-      throw new Error(`Frame ${this.frameIndex} is gone. Call frames, then frame_select again.`);
+      throw new Error(`Frame ${tab.frameIndex} is gone. Call frames, then frame_select again.`);
     }
     return frame.executeJavaScript(js);
   }
@@ -653,23 +663,25 @@ export class BrowserHub {
 
   /** Index 0 is the main frame; null also returns to it. */
   selectFrame(index: number | null): { index: number | null; url: string; name: string } {
+    const tab = this.requireActive();
     if (index === null || index === 0) {
-      this.frameIndex = null;
-      this.frameUrl = null;
+      tab.frameIndex = null;
+      tab.frameUrl = null;
       this.snapshotByRef.clear();
       return { index: null, url: this.activeUrl(), name: "" };
     }
     const frames = this.listFrames();
     const frame = frames[index];
     if (!frame) throw new Error(`No frame at index ${index}. Call frames to list them.`);
-    this.frameIndex = index;
-    this.frameUrl = frame.url || null;
+    tab.frameIndex = index;
+    tab.frameUrl = frame.url || null;
     this.snapshotByRef.clear();
     return frame;
   }
 
+  /** The active tab's frame selection, or null when it is reading its main frame. */
   selectedFrame(): number | null {
-    return this.frameIndex;
+    return this.active()?.frameIndex ?? null;
   }
 
   async snapshot(): Promise<SnapshotItem[]> {
@@ -959,8 +971,11 @@ export class BrowserHub {
     } catch {
       json = String(value);
     }
-    return json.length > maxChars ? `${json.slice(0, maxChars)}
-[truncated at ${maxChars} chars]` : json;
+    if (json.length <= maxChars) return json;
+    // The marker counts against the cap, so the whole reply stays within it.
+    const marker = `
+[truncated at ${maxChars} chars]`;
+    return json.slice(0, Math.max(0, maxChars - marker.length)) + marker;
   }
 
   async waitFor(opts: { text?: string; timeoutMs?: number; record?: boolean }): Promise<void> {
@@ -985,11 +1000,11 @@ export class BrowserHub {
   async clickSelectors(selectors: string[], text?: string): Promise<void> {
     this.rec?.beginIgnore();
     try {
-      const page = await this.playwrightPage();
-      if (page) {
+      const target = await this.pwTarget();
+      if (target) {
         for (const sel of selectors) {
           try {
-            await page.locator(sel).first().click({ timeout: 2500 });
+            await target.root.locator(sel).first().click({ timeout: 2500 });
             return;
           } catch {
             /* try next selector */
@@ -998,21 +1013,21 @@ export class BrowserHub {
         if (text) {
           for (const role of ["button", "link", "tab"] as const) {
             try {
-              await page.getByRole(role, { name: text }).first().click({ timeout: 2000 });
+              await target.page.getByRole(role, { name: text }).first().click({ timeout: 2000 });
               return;
             } catch {
               /* try next role */
             }
           }
           try {
-            await page.getByText(text, { exact: false }).first().click({ timeout: 2000 });
+            await target.page.getByText(text, { exact: false }).first().click({ timeout: 2000 });
             return;
           } catch {
             /* fall through */
           }
         }
       }
-      const found = await this.requireActive().view.webContents.executeJavaScript(`(() => {
+      const found = await this.exec(`(() => {
         const sels = ${JSON.stringify(selectors)};
         for (const sel of sels) {
           try {
@@ -1045,11 +1060,11 @@ export class BrowserHub {
   async typeSelectors(selectors: string[], text: string, submit = false, name?: string): Promise<void> {
     this.rec?.beginIgnore();
     try {
-      const page = await this.playwrightPage();
-      if (page) {
+      const target = await this.pwTarget();
+      if (target) {
         for (const sel of selectors) {
           try {
-            const loc = page.locator(sel).first();
+            const loc = target.root.locator(sel).first();
             await loc.click({ timeout: 2500 });
             await loc.fill(text);
             if (submit) await loc.press("Enter");
@@ -1059,7 +1074,7 @@ export class BrowserHub {
           }
         }
         if (name) {
-          for (const loc of [page.getByPlaceholder(name), page.getByLabel(name)]) {
+          for (const loc of [target.page.getByPlaceholder(name), target.page.getByLabel(name)]) {
             try {
               await loc.first().click({ timeout: 2000 });
               await loc.first().fill(text);
@@ -1071,7 +1086,7 @@ export class BrowserHub {
           }
         }
       }
-      const found = await this.requireActive().view.webContents.executeJavaScript(`(() => {
+      const found = await this.exec(`(() => {
         const sels = ${JSON.stringify(selectors)};
         const value = ${JSON.stringify(text)};
         const submit = ${submit ? "true" : "false"};
@@ -1099,18 +1114,18 @@ export class BrowserHub {
   async selectSelectors(selectors: string[], value: string): Promise<void> {
     this.rec?.beginIgnore();
     try {
-      const page = await this.playwrightPage();
-      if (page) {
+      const target = await this.pwTarget();
+      if (target) {
         for (const sel of selectors) {
           try {
-            await page.locator(sel).first().selectOption(value, { timeout: 2500 });
+            await target.root.locator(sel).first().selectOption(value, { timeout: 2500 });
             return;
           } catch {
             /* try next */
           }
         }
       }
-      const found = await this.requireActive().view.webContents.executeJavaScript(`(() => {
+      const found = await this.exec(`(() => {
         const sels = ${JSON.stringify(selectors)};
         const value = ${JSON.stringify(value)};
         for (const sel of sels) {
@@ -1157,9 +1172,7 @@ export class BrowserHub {
   }
 
   async pageText(): Promise<string> {
-    return (await this.requireActive().view.webContents.executeJavaScript(
-      `document.body ? document.body.innerText : ''`,
-    )) as string;
+    return (await this.exec(`document.body ? document.body.innerText : ''`)) as string;
   }
 
   async extractReadable(): Promise<{ title: string; url: string; markdown: string }> {
@@ -1279,11 +1292,10 @@ export class BrowserHub {
   }
 
   async html(ref?: string, maxChars = 50_000): Promise<{ html: string; truncated: boolean; total: number }> {
-    const wc = this.requireActive().view.webContents;
     const cap = Math.max(1, Math.min(maxChars, 50_000));
     // Sliced in the page: a large DOM serializes to megabytes, and all but `cap` of it would
     // cross the IPC boundary only to be thrown away here.
-    const value = (await wc.executeJavaScript(htmlScript(ref ?? null, cap))) as {
+    const value = (await this.exec(htmlScript(ref ?? null, cap))) as {
       html: string;
       truncated: boolean;
       total: number;
@@ -1481,11 +1493,9 @@ export class BrowserHub {
     wc.on("did-navigate", () => {
       if (this.activeId === tab.id) this.snapshotByRef.clear();
       // The frame tree is rebuilt by a top-level navigation, so a stale index would point at
-      // a different iframe (or none). Reads go back to the main frame.
-      if (this.frameIndex !== null && this.activeId === tab.id) {
-        this.frameIndex = null;
-        this.frameUrl = null;
-      }
+      // a different iframe (or none). This tab goes back to reading its main frame.
+      tab.frameIndex = null;
+      tab.frameUrl = null;
       tab.favicon = null;
       this.thumbs.delete(tab.id);
       if (!tab.incognito) this.history?.add(wc.getURL(), wc.getTitle());
@@ -1552,11 +1562,21 @@ export class BrowserHub {
    * dismisses every dialog itself, so this is also what makes "accept" possible at all.
    */
   private hookDialogs(tabId: string, page: PwPage): void {
-    if (this.dialogHooked.has(tabId)) return;
+    if (this.dialogHooked.has(tabId) && this.dialogHookedPages.has(page)) return;
+    // Two tabs on the same URL resolve to the same Playwright page, so the page object — not
+    // the tab id — decides whether a listener is already there.
+    if (this.dialogHookedPages.has(page)) {
+      this.dialogHooked.add(tabId);
+      return;
+    }
+    this.dialogHookedPages.add(page);
     this.dialogHooked.add(tabId);
     try {
       page.on("dialog", (d) => {
-        const policy = this.dialogs.get(tabId);
+        // The owning tab is resolved now, not at attach time: the page may since have been
+        // re-matched to a different tab, and the tab captured at attach time may be closed.
+        const owner = this.tabForPage(page);
+        const policy = owner ? this.dialogs.get(owner) : { action: "dismiss" as const };
         let message = "";
         let type = "dialog";
         try {
@@ -1565,12 +1585,14 @@ export class BrowserHub {
         } catch {
           /* the dialog may already be gone */
         }
-        this.dialogs.note(tabId, {
-          type,
-          message,
-          handledAs: policy.action,
-          at: new Date().toISOString(),
-        });
+        if (owner) {
+          this.dialogs.note(owner, {
+            type,
+            message,
+            handledAs: policy.action,
+            at: new Date().toISOString(),
+          });
+        }
         const done = policy.action === "accept" ? d.accept(policy.promptText) : d.dismiss();
         void Promise.resolve(done).catch(() => {
           /* the page navigated away mid-dialog */
@@ -1578,7 +1600,25 @@ export class BrowserHub {
       });
     } catch {
       this.dialogHooked.delete(tabId);
+      this.dialogHookedPages.delete(page);
     }
+  }
+
+  /** The tab currently showing this Playwright page, preferring the active one on a tie. */
+  private tabForPage(page: PwPage): string | null {
+    let url = "";
+    try {
+      url = page.url();
+    } catch {
+      return null;
+    }
+    if (!url) return null;
+    const active = this.active();
+    if (active && safeUrl(active.view.webContents) === url) return active.id;
+    for (const tab of this.tabs.values()) {
+      if (safeUrl(tab.view.webContents) === url) return tab.id;
+    }
+    return null;
   }
 
   /** True once a Playwright page for the active tab exists (and so dialogs are intercepted). */
@@ -1606,10 +1646,11 @@ export class BrowserHub {
   private async pwTarget(): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
     const page = await this.playwrightPage();
     if (!page) return null;
-    if (this.frameIndex === null) return { page, root: page };
+    const tab = this.active();
+    if (!tab || tab.frameIndex === null) return { page, root: page };
     const frames: PwFrame[] = page.frames();
-    const byUrl = this.frameUrl ? frames.find((f) => f.url() === this.frameUrl) : undefined;
-    const root = byUrl ?? frames[this.frameIndex];
+    const byUrl = tab.frameUrl ? frames.find((f) => f.url() === tab.frameUrl) : undefined;
+    const root = byUrl ?? frames[tab.frameIndex];
     if (!root) return null;
     return { page, root };
   }
@@ -1636,6 +1677,15 @@ export function normalizeUrl(input: string): string {
     return `https://www.google.com/search?hl=en&q=${encodeURIComponent(trimmed)}`;
   }
   return `https://${trimmed}`;
+}
+
+/** `getURL()` throws on a destroyed webContents, and a closing tab must not break dialogs. */
+function safeUrl(wc: Electron.WebContents): string {
+  try {
+    return wc.getURL();
+  } catch {
+    return "";
+  }
 }
 
 function unique(items: string[]): string[] {

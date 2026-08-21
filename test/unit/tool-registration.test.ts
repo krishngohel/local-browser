@@ -24,7 +24,7 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
 
 type Registered = { name: string; description: string };
 
-function registerAll(): Registered[] {
+function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
   const registered: Registered[] = [];
   const server = {
     tool(name: string, description: string, _schema: unknown, _handler: unknown) {
@@ -45,7 +45,7 @@ function registerAll(): Registered[] {
     history: {} as never,
     bookmarks: {} as never,
     downloads: {} as never,
-    settings: () => ({ ...DEFAULT_SETTINGS, evaluateEnabled: true }),
+    settings: () => ({ ...DEFAULT_SETTINGS, evaluateEnabled: opts.evaluateEnabled ?? true }),
     prefs: allGroupsOn,
     dialogs: new DialogPolicies(),
   };
@@ -72,5 +72,18 @@ test("every manifest entry in an implemented group is registered exactly once", 
   for (const entry of TOOL_MANIFEST) {
     if (!IMPLEMENTED_GROUPS.includes(entry.group)) continue;
     assert.equal(counts.get(entry.name) ?? 0, 1, `${entry.name} (${entry.group}) not registered`);
+  }
+});
+
+test("evaluate is registered only when the user has enabled it", () => {
+  const on = registerAll({ evaluateEnabled: true }).map((t) => t.name);
+  const off = registerAll({ evaluateEnabled: false }).map((t) => t.name);
+  assert.ok(on.includes("evaluate"), "evaluate missing with evaluateEnabled on");
+  assert.ok(!off.includes("evaluate"), "evaluate registered with evaluateEnabled off");
+  assert.equal(off.length, on.length - 1, "only evaluate should differ");
+  // The rest of the interaction group is unaffected by the evaluate switch.
+  for (const name of ["hover", "double_click", "right_click", "drag", "keyboard_shortcut",
+    "upload_file", "dialog", "frames", "frame_select", "zoom"]) {
+    assert.ok(off.includes(name), `${name} should register without evaluateEnabled`);
   }
 });
