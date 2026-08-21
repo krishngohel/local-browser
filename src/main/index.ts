@@ -24,6 +24,7 @@ import { Recorder } from "./recordings";
 import type { AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
+import { getSettings } from "./settings";
 
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
@@ -66,7 +67,7 @@ function getState(): AppState {
     version: app.getVersion(),
     transfer: getTransferPrefs(),
     platform: process.platform,
-    toolCount: enabledToolCount(),
+    toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
   };
 }
 

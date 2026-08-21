@@ -62,6 +62,17 @@ export type TransferPrefs = {
   toolsDebug: boolean;
   toolsTest: boolean;
   toolsRecord: boolean;
+  toolsRead: boolean;
+  toolsInteract: boolean;
+  toolsState: boolean;
+  toolsQa: boolean;
+};
+
+export type AppSettings = {
+  theme: "system" | "light" | "dark";
+  compactChrome: boolean;
+  homeUrl: string;
+  evaluateEnabled: boolean;
 };
 
 export type AppState = {
