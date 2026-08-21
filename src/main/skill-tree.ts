@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { app } from "electron";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getTransferPrefs } from "./transfer-prefs";
 
@@ -16,9 +15,16 @@ Always: snapshot before click/type/fill. Use refs like e0, e1. snapshot/screensh
 let cached: string | null = null;
 
 export function skillTreePath(): string | null {
+  // Required lazily so this module can be bundled for unit tests, where electron is external.
+  let appPath = "";
+  try {
+    appPath = (require("electron") as typeof import("electron")).app.getAppPath();
+  } catch {
+    /* not running inside electron (unit tests) */
+  }
   const candidates = [
-    path.join(process.resourcesPath, "skills", "ECHO-SKILL-TREE.md"),
-    path.join(app.getAppPath(), "skills", "ECHO-SKILL-TREE.md"),
+    ...(process.resourcesPath ? [path.join(process.resourcesPath, "skills", "ECHO-SKILL-TREE.md")] : []),
+    ...(appPath ? [path.join(appPath, "skills", "ECHO-SKILL-TREE.md")] : []),
     path.join(__dirname, "..", "skills", "ECHO-SKILL-TREE.md"),
     path.join(__dirname, "..", "..", "skills", "ECHO-SKILL-TREE.md"),
   ];

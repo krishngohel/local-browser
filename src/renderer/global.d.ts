@@ -1,4 +1,5 @@
 import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 declare global {
   interface Window {
@@ -41,6 +42,7 @@ declare global {
       setSettings: (open: boolean) => Promise<void>;
       getSettings: () => Promise<AppSettings>;
       updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
+      toolManifest: () => Promise<ToolManifestEntry[]>;
       setPaused: (p: boolean) => Promise<boolean>;
       clearActivity: () => Promise<void>;
       openMenu: () => Promise<void>;
