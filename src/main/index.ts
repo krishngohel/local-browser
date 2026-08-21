@@ -353,6 +353,7 @@ function registerIpc(): void {
   ipcMain.handle("bookmarks:list", () => bookmarks.list());
   ipcMain.handle("bookmarks:add", () => {
     const url = hub.activeUrl();
+    if (!url) return null;
     const title = hub.listTabs().find((t) => t.id === hub.activeTabId())?.title ?? url;
     const added = bookmarks.add(url, title);
     broadcast();

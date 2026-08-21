@@ -23,8 +23,13 @@ export class Bookmarks {
     return this.entries.map((b) => ({ ...b }));
   }
 
-  /** Idempotent per url: bookmarking the same page twice returns the first entry. */
-  add(url: string, title: string): BookmarkInfo {
+  /**
+   * Idempotent per url: bookmarking the same page twice returns the first entry.
+   * Returns null for anything that is not an http(s) page, so a blank or internal
+   * url can never be stored as an empty bookmark.
+   */
+  add(url: string, title: string): BookmarkInfo | null {
+    if (!/^https?:\/\//.test(url)) return null;
     const existing = this.entries.find((b) => b.url === url);
     if (existing) return { ...existing };
     const entry: BookmarkInfo = {

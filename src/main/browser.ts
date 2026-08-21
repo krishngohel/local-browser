@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, session, nativeImage } from "electron";
+import { BrowserView, BrowserWindow, session, nativeImage, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { pwBridge, type PwBrowser, type PwCdpSession, type PwPage, type ScreencastFrame } from "./pw-bridge";
@@ -33,6 +33,7 @@ type Tab = {
 
 const HOME_URL = "https://www.google.com/";
 const THUMB_TTL_MS = 10_000;
+const THUMB_CAPTURE_TIMEOUT_MS = 2_000;
 
 export class BrowserHub {
   private window: BrowserWindow | null = null;
@@ -124,7 +125,11 @@ export class BrowserHub {
   }
 
   private configureSession(): void {
-    const ses = session.fromPartition(partitionName());
+    this.prepareSession(session.fromPartition(partitionName()));
+  }
+
+  /** Chrome UA plus the shared download path, for the persistent and incognito sessions alike. */
+  private prepareSession(ses: Session): void {
     applyChromeSession(ses);
     ses.on("will-download", (_event, item) => {
       const dest = path.join(downloadsDir(), item.getFilename());
@@ -154,7 +159,7 @@ export class BrowserHub {
     // A non-"persist:" partition is memory-only, so an incognito tab leaves no
     // cookies or cache behind. Each incognito tab gets its own.
     const partition = incognito ? `incognito-${id}` : partitionName();
-    if (incognito) applyChromeSession(session.fromPartition(partition));
+    if (incognito) this.prepareSession(session.fromPartition(partition));
     const view = new BrowserView({
       webPreferences: {
         partition,
@@ -182,6 +187,9 @@ export class BrowserHub {
     if (this.settingsOpen) return;
     const tab = this.requireTab(id);
     const switched = this.activeId !== id;
+    // Last chance to photograph the outgoing tab: once its view is detached below,
+    // capturePage() never settles.
+    if (switched && this.activeId) void this.captureThumb(this.activeId);
     this.activeId = id;
     if (!this.window) return;
     for (const other of this.tabs.values()) {
@@ -253,15 +261,41 @@ export class BrowserHub {
     this.onChange();
   }
 
-  /** 320px-wide data URL of the tab's current page, cached for 10 s per tab. */
+  /**
+   * 320px-wide data URL of the tab's page, or "" when none can be produced. Never rejects.
+   *
+   * Only the active tab can be captured live: `selectTab` detaches every other
+   * BrowserView from the window, and `capturePage()` on a detached view never
+   * settles (measured: still pending after 15 s). Background tabs are therefore
+   * served from the cache, which is filled while they are on screen — on
+   * `did-stop-loading` and again the moment they are switched away from.
+   */
   async tabThumbnail(id: string): Promise<string> {
     const cached = this.thumbs.get(id);
+    if (this.activeId !== id) return cached?.data ?? "";
     if (cached && Date.now() - cached.at < THUMB_TTL_MS) return cached.data;
-    const image = await this.requireTab(id).view.webContents.capturePage();
-    if (image.isEmpty()) return "";
-    const data = image.resize({ width: 320 }).toDataURL();
-    this.thumbs.set(id, { at: Date.now(), data });
-    return data;
+    return this.captureThumb(id);
+  }
+
+  /** Caches the result — empty ones included — so a miss is not retried on every hover. */
+  private async captureThumb(id: string): Promise<string> {
+    const tab = this.tabs.get(id);
+    if (!tab) return "";
+    const previous = this.thumbs.get(id)?.data ?? "";
+    let data = "";
+    try {
+      const image = await Promise.race([
+        tab.view.webContents.capturePage(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), THUMB_CAPTURE_TIMEOUT_MS)),
+      ]);
+      if (image && !image.isEmpty()) data = image.resize({ width: 320 }).toDataURL();
+    } catch {
+      /* destroyed view */
+    }
+    // A failed re-capture keeps the last good image rather than blanking the tab.
+    const kept = data || previous;
+    this.thumbs.set(id, { at: Date.now(), data: kept });
+    return kept;
   }
 
   activeTabId(): string | null {
@@ -1004,7 +1038,10 @@ export class BrowserHub {
     });
     wc.on("did-navigate-in-page", () => this.onChange());
     wc.on("did-start-loading", () => this.onChange());
-    wc.on("did-stop-loading", () => this.onChange());
+    wc.on("did-stop-loading", () => {
+      if (this.activeId === tab.id) void this.captureThumb(tab.id);
+      this.onChange();
+    });
     wc.on("console-message", (_e, level, message) => {
       if (level >= 2) {
         tab.console.push(`[${level}] ${message}`.slice(0, 500));

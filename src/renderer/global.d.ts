@@ -15,7 +15,7 @@ declare global {
       reorderTab: (id: string, index: number) => Promise<void>;
       tabThumbnail: (id: string) => Promise<string>;
       setChromeHeight: (px: number) => Promise<void>;
-      addBookmark: () => Promise<BookmarkInfo>;
+      addBookmark: () => Promise<BookmarkInfo | null>;
       removeBookmark: (idOrUrl: string) => Promise<boolean>;
       listBookmarks: () => Promise<BookmarkInfo[]>;
       searchHistory: (q: string) => Promise<HistoryEntry[]>;

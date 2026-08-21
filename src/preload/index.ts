@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld("lb", {
   reorderTab: (id: string, index: number) => ipcRenderer.invoke("tabs:reorder", id, index),
   tabThumbnail: (id: string): Promise<string> => ipcRenderer.invoke("tabs:thumbnail", id),
   setChromeHeight: (px: number) => ipcRenderer.invoke("chrome:height", px),
-  addBookmark: (): Promise<BookmarkInfo> => ipcRenderer.invoke("bookmarks:add"),
+  addBookmark: (): Promise<BookmarkInfo | null> => ipcRenderer.invoke("bookmarks:add"),
   removeBookmark: (idOrUrl: string): Promise<boolean> => ipcRenderer.invoke("bookmarks:remove", idOrUrl),
   listBookmarks: (): Promise<BookmarkInfo[]> => ipcRenderer.invoke("bookmarks:list"),
   searchHistory: (q: string): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:search", q),
