@@ -83,14 +83,30 @@
       </header>
       <div class="settings-body">
         <nav class="settings-nav">
-          <button class="nav-item active" data-section="connections">Connections</button>
-          <button class="nav-item" data-section="recordings">Recordings</button>
-          <button class="nav-item" data-section="testing">Testing</button>
-          <button class="nav-item" data-section="transfers">Transfers</button>
-          <button class="nav-item" data-section="system">System</button>
-          <button class="nav-item" data-section="about">About</button>
-          <button class="nav-item" data-section="privacy">Privacy</button>
-          <button class="nav-item" data-section="terms">Terms</button>
+          <div class="nav-search">
+            <input
+              id="settings-search"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="Search settings"
+              aria-label="Search settings"
+            />
+          </div>
+          <div class="nav-list" id="settings-nav-list">
+            <button class="nav-item active" data-section="connections" data-icon="link"><span class="nav-label">Connections</span></button>
+            <button class="nav-item" data-section="tools" data-icon="wrench"><span class="nav-label">Tools</span></button>
+            <button class="nav-item" data-section="transfers" data-icon="swap"><span class="nav-label">Transfers</span></button>
+            <button class="nav-item" data-section="activity" data-icon="activity"><span class="nav-label">Activity</span></button>
+            <button class="nav-item" data-section="recordings" data-icon="record"><span class="nav-label">Recordings</span></button>
+            <button class="nav-item" data-section="testing" data-icon="check"><span class="nav-label">Testing</span></button>
+            <button class="nav-item" data-section="appearance" data-icon="palette"><span class="nav-label">Appearance</span></button>
+            <button class="nav-item" data-section="system" data-icon="monitor"><span class="nav-label">System</span></button>
+            <button class="nav-item" data-section="about" data-icon="info"><span class="nav-label">About</span></button>
+            <button class="nav-item" data-section="privacy" data-icon="lock"><span class="nav-label">Privacy</span></button>
+            <button class="nav-item" data-section="terms" data-icon="doc"><span class="nav-label">Terms</span></button>
+          </div>
+          <p class="nav-empty" id="settings-search-empty" hidden>No settings match</p>
         </nav>
         <div class="settings-content">
           <section id="section-connections" class="card-list">
@@ -186,40 +202,17 @@
             </div>
             <p class="note" id="connect-note"></p>
           </section>
-          <section id="section-recordings" class="card-list" hidden>
-            <h2>Recordings</h2>
+          <section id="section-tools" class="card-list" hidden>
+            <h2>Tools</h2>
             <p class="help">
-              Record clicks here and from a connected assistant. Play back later with no model.
+              Every tool a connected assistant can call. Turn whole groups on or off under Transfers, then reconnect the client.
             </p>
+            <p class="count-line" id="tools-summary">Counting tools…</p>
             <div class="panel">
-            <div class="card">
-              <div>
-                <h3>Recorder</h3>
-                <p class="meta" id="record-status">Not recording</p>
-              </div>
-              <button class="chrome-btn filled" id="record-toggle">Start recording</button>
-            </div>
-            </div>
-            <div class="panel" id="recording-list"></div>
-            <p class="note" id="record-note"></p>
-          </section>
-          <section id="section-testing" class="card-list" hidden>
-            <h2>Product testing</h2>
-            <p class="help">Save screenshots and a short report while you click through a site.</p>
-            <div class="panel">
-            <div class="card">
-              <div>
-                <h3>Current run</h3>
-                <p class="meta" id="test-id">No run in progress</p>
-                <p class="meta" id="test-counts"></p>
+              <div class="table-wrap">
+                <table class="grid" id="tools-table"></table>
               </div>
             </div>
-            </div>
-            <div class="actions">
-              <button class="chrome-btn filled" id="test-start">Start run</button>
-              <button class="chrome-btn" id="test-end">End run</button>
-            </div>
-            <p class="note" id="test-note"></p>
           </section>
           <section id="section-transfers" class="card-list" hidden>
             <h2>What the assistant receives</h2>
@@ -228,7 +221,7 @@
             </p>
             <h2>Tools</h2>
             <p class="help">
-              Cursor often caps about 40 MCP tools across every server. Echo is at <strong id="tool-count">33</strong> with all groups on. Reconnect after changing this.
+              Cursor often caps about 40 MCP tools across every server. Echo is at <strong id="tool-count">33</strong> with the current groups on. Reconnect after changing this.
             </p>
             <div class="panel">
             <div class="card">
@@ -279,6 +272,50 @@
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsRecord" /><span></span></label>
             </div>
+            <div class="card">
+              <div>
+                <h3>Read and data</h3>
+                <p class="meta">8 tools: get_text, find, links, tables, forms, page_info, html, pdf_text.</p>
+                <p class="tokens">On uses 8 slots. Text only, no photos.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsRead" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Interaction depth</h3>
+                <p class="meta">10 tools plus evaluate: hover, drag, right-click, dialogs, frames, zoom, upload.</p>
+                <p class="tokens">On uses 10 slots, or 11 with evaluate allowed below.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsInteract" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Sessions and state</h3>
+                <p class="meta">9 tools: cookies, storage, history, downloads, bookmarks, clear site data.</p>
+                <p class="tokens">On uses 9 slots. This reaches your signed-in sessions.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsState" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Automation and QA</h3>
+                <p class="meta">9 tools: asserts, visual diff, perf timing, network log, schedules.</p>
+                <p class="tokens">On uses 9 slots.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsQa" /><span></span></label>
+            </div>
+            </div>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Allow evaluate (JavaScript)</h3>
+                <p class="meta">
+                  Runs any JavaScript the assistant sends inside the current page, including on sites you are signed in to. Leave off unless you need it.
+                </p>
+                <p class="tokens">Needs Interaction depth on. Adds 1 slot.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="evaluate-enabled" /><span></span></label>
+            </div>
             </div>
             <h2>Payloads</h2>
             <div class="panel">
@@ -321,6 +358,99 @@
                 <p class="tokens">On is a few thousand tokens once per session. Off is a short reminder; echo_help can still load the guide.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="skillTreeOnConnect" /><span></span></label>
+            </div>
+            </div>
+          </section>
+          <section id="section-activity" class="card-list" hidden>
+            <h2>Activity</h2>
+            <p class="help">
+              Every tool call a connected assistant has made this session. It stays on this computer and clears when you quit.
+            </p>
+            <p class="count-line" id="activity-count">0 calls this session</p>
+            <div class="actions">
+              <button class="chrome-btn" type="button" id="activity-pause">Pause</button>
+              <button class="chrome-btn" type="button" id="activity-clear">Clear</button>
+            </div>
+            <div class="panel">
+              <div class="table-wrap">
+                <table class="grid" id="activity-table"></table>
+              </div>
+            </div>
+          </section>
+          <section id="section-recordings" class="card-list" hidden>
+            <h2>Recordings</h2>
+            <p class="help">
+              Record clicks here and from a connected assistant. Play back later with no model.
+            </p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Recorder</h3>
+                <p class="meta" id="record-status">Not recording</p>
+              </div>
+              <button class="chrome-btn filled" id="record-toggle">Start recording</button>
+            </div>
+            </div>
+            <div class="panel" id="recording-list"></div>
+            <p class="note" id="record-note"></p>
+          </section>
+          <section id="section-testing" class="card-list" hidden>
+            <h2>Product testing</h2>
+            <p class="help">Save screenshots and a short report while you click through a site.</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Current run</h3>
+                <p class="meta" id="test-id">No run in progress</p>
+                <p class="meta" id="test-counts"></p>
+              </div>
+            </div>
+            </div>
+            <div class="actions">
+              <button class="chrome-btn filled" id="test-start">Start run</button>
+              <button class="chrome-btn" id="test-end">End run</button>
+            </div>
+            <p class="note" id="test-note"></p>
+          </section>
+          <section id="section-appearance" class="card-list" hidden>
+            <h2>Appearance</h2>
+            <p class="help">How Echo itself looks. Pages you visit are never restyled.</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Theme</h3>
+                <p class="meta">System follows the light or dark setting of this computer.</p>
+              </div>
+              <div class="segmented" role="radiogroup" aria-label="Theme">
+                <label class="seg"><input type="radio" name="theme" value="system" /><span>System</span></label>
+                <label class="seg"><input type="radio" name="theme" value="light" /><span>Light</span></label>
+                <label class="seg"><input type="radio" name="theme" value="dark" /><span>Dark</span></label>
+              </div>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Compact chrome</h3>
+                <p class="meta">One shorter toolbar row instead of two. Gives the page more height.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="compact-chrome" /><span></span></label>
+            </div>
+            <div class="card stack">
+              <div>
+                <h3>Home page</h3>
+                <p class="meta">Opens in every new tab. Start it with http:// or https://.</p>
+              </div>
+              <div class="field">
+                <input
+                  class="text-input"
+                  id="home-url"
+                  type="text"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="https://www.google.com"
+                  aria-label="Home page URL"
+                />
+                <button class="chrome-btn" type="button" id="home-url-save">Save</button>
+              </div>
             </div>
             </div>
           </section>

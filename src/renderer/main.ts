@@ -6,6 +6,7 @@ import { initOmnibox, renderOmnibox, focusOmnibox, closeSuggestions } from "./ui
 import { initAssistant, renderAssistant, closePopover } from "./ui/assistant";
 import { remeasureToasts, toast } from "./ui/toasts";
 import { releaseAll } from "./ui/overlay";
+import { closePalette, initPalette, openPalette, type PaletteAction } from "./ui/palette";
 import {
   fillSnippets,
   hideSettings,
@@ -31,6 +32,7 @@ const bookmarkBtn = el<HTMLButtonElement>("bookmark");
 const menuBtn = el<HTMLButtonElement>("menu");
 const assistantPill = el<HTMLButtonElement>("assistant-pill");
 const assistantPop = el("assistant-pop");
+const paletteRoot = el("palette");
 
 let state: AppState | null = null;
 let themeKey = "";
@@ -103,9 +105,147 @@ function closeOverlays(): void {
   closeSuggestions();
   closePopover();
   hidePreview();
+  closePalette();
   releaseAll();
   // A toast on screen still needs its strip; releaseAll just took it away.
   remeasureToasts();
+}
+
+/* ---------------------------------------------------------------- palette */
+
+/** Left nav order, reused for the "Settings: …" palette rows. */
+const SETTINGS_SECTIONS: [string, string][] = [
+  ["connections", "Connections"],
+  ["tools", "Tools"],
+  ["transfers", "Transfers"],
+  ["activity", "Activity"],
+  ["recordings", "Recordings"],
+  ["testing", "Testing"],
+  ["appearance", "Appearance"],
+  ["system", "System"],
+  ["about", "About"],
+  ["privacy", "Privacy"],
+  ["terms", "Terms"],
+];
+
+const THEME_CYCLE: AppSettings["theme"][] = ["system", "light", "dark"];
+
+async function cycleTheme(): Promise<void> {
+  const current = state?.settings.theme ?? "system";
+  const next = THEME_CYCLE[(THEME_CYCLE.indexOf(current) + 1) % THEME_CYCLE.length];
+  await window.lb.updateSettings({ theme: next });
+  toast(`Theme: ${next}`);
+}
+
+async function toggleCompact(): Promise<void> {
+  const next = state?.settings.compactChrome !== true;
+  await window.lb.updateSettings({ compactChrome: next });
+  toast(next ? "Compact chrome on" : "Compact chrome off");
+}
+
+/**
+ * Built fresh on every keystroke so labels track the live state: the recorder row reads
+ * "Stop recording" mid-take, and there is one row per background tab. The Settings rows sit
+ * at the end because eleven of them would otherwise fill the whole list before the user types.
+ */
+function paletteActions(): PaletteAction[] {
+  const now = state;
+  const actions: PaletteAction[] = [
+    { id: "new-tab", label: "New tab", hint: "Ctrl+T", run: () => void window.lb.newTab() },
+    {
+      id: "new-incognito-tab",
+      label: "New incognito tab",
+      hint: "Ctrl+Shift+N",
+      run: () => void window.lb.newIncognitoTab(),
+    },
+    {
+      id: "close-tab",
+      label: "Close tab",
+      hint: "Ctrl+W",
+      run: () => {
+        const id = now?.activeTabId;
+        if (id) void window.lb.closeTab(id);
+      },
+    },
+    {
+      id: "bookmark",
+      label: "Bookmark this page",
+      hint: "Ctrl+D",
+      run: () => toggleBookmark(),
+    },
+  ];
+
+  for (const tab of now?.tabs ?? []) {
+    if (tab.id === now?.activeTabId) continue;
+    actions.push({
+      id: `tab-${tab.id}`,
+      label: `Switch to tab: ${tab.title || tab.url || "New tab"}`,
+      run: () => void window.lb.selectTab(tab.id),
+    });
+  }
+
+  const recording = now?.recording.active === true;
+  const testing = Boolean(now?.test.id);
+  const paused = now?.activity.paused === true;
+
+  actions.push(
+    // The cycle is spelled out so the row is findable by the theme the user wants, not only
+    // by the word "theme": matching is over the label, and "dark" is not in "Toggle theme".
+    { id: "theme", label: "Toggle theme (system → light → dark)", run: () => void cycleTheme() },
+    { id: "compact", label: "Toggle compact chrome", run: () => void toggleCompact() },
+    {
+      id: "record",
+      label: recording ? "Stop recording" : "Start recording",
+      run: () => void window.lb.recordToggle().then(() => toast(recording ? "Recording saved" : "Recording started")),
+    },
+    {
+      id: "test",
+      label: testing ? "End test run" : "Start test run",
+      run: async () => {
+        const dir = testing ? await window.lb.testEnd() : await window.lb.testStart();
+        toast(testing ? `Report saved to ${dir}` : "Test run started", "ok");
+      },
+    },
+    {
+      id: "pause",
+      label: paused ? "Resume assistant" : "Pause assistant",
+      run: () => {
+        void window.lb.setPaused(!paused);
+        toast(paused ? "Assistant resumed" : "Assistant paused", paused ? "ok" : "info");
+      },
+    },
+    {
+      id: "copy-mcp-url",
+      label: "Copy MCP URL",
+      run: async () => {
+        const url = now?.mcp.url;
+        if (!url) return toast("The MCP server is not running", "error");
+        await window.lb.copyText(url);
+        toast("Copied", "ok");
+      },
+    },
+    {
+      id: "copy-token",
+      label: "Copy token",
+      run: async () => {
+        const snippets = await window.lb.connectSnippets();
+        if (!snippets.token) return toast("No token yet", "error");
+        await window.lb.copyText(snippets.token);
+        toast("Copied", "ok");
+      },
+    },
+    { id: "open-data", label: "Open data folder", run: () => void window.lb.openUserData() },
+  );
+
+  for (const [id, label] of SETTINGS_SECTIONS) {
+    actions.push({
+      id: `settings-${id}`,
+      label: `Settings: ${label}`,
+      run: () => void openSettingsSection(id),
+    });
+  }
+
+  return actions;
 }
 
 backBtn.addEventListener("click", () => void window.lb.back());
@@ -128,10 +268,20 @@ window.addEventListener("resize", () => {
 });
 
 window.addEventListener("keydown", (event) => {
+  const mod = event.ctrlKey || event.metaKey;
+  const key = event.key.toLowerCase();
+  // Main already routes Ctrl+K while the page has focus; this covers the chrome itself, where
+  // before-input-event on the page view never fires.
+  if (mod && (key === "k" || (event.shiftKey && key === "p"))) {
+    event.preventDefault();
+    openPalette();
+    return;
+  }
   if (event.key === "Escape") closeOverlays();
 });
 
 initOmnibox(urlInput, urlForm, suggest, security);
+initPalette(paletteRoot, paletteActions);
 initAssistant(assistantPill, assistantPop, (section) => void openSettingsSection(section));
 
 async function openSettingsSection(section: string): Promise<void> {
@@ -148,9 +298,7 @@ if (window.lb) {
   window.lb.onCloseSettings(() => hideSettings());
   window.lb.onFocusOmnibox(() => focusOmnibox());
   window.lb.onToggleBookmark(() => toggleBookmark());
-  window.lb.onOpenPalette(() => {
-    /* Command palette lands in the next task. */
-  });
+  window.lb.onOpenPalette(() => openPalette());
   void window.lb.getState().then((next) => {
     render(next);
     reportChromeHeight();

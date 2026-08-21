@@ -156,6 +156,9 @@ function handleShortcut(input: Electron.Input): boolean {
     return true;
   }
   if (mod && (key === "k" || (input.shift && key === "p"))) {
+    // The page view holds focus when the shortcut comes from a site, so the palette input
+    // would open without a caret. Hand focus back to the chrome first.
+    mainWindow?.webContents.focus();
     mainWindow?.webContents.send("open-palette");
     return true;
   }

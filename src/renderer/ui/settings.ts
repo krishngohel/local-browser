@@ -1,19 +1,32 @@
-import type { AppState } from "../../shared/types";
+import type { AppSettings, AppState } from "../../shared/types";
+import type { ToolGroup, ToolManifestEntry } from "../../shared/tool-manifest";
+import { GROUP_LABELS, TOOL_MANIFEST } from "../../shared/tool-manifest";
+import { formatMs, h, svgIcon } from "./dom";
 import { remeasureToasts, toast } from "./toasts";
 import { releaseAll } from "./overlay";
 
 /**
- * The settings page. Behaviour is carried over unchanged from the pre-rewrite renderer —
- * same ids, same copy, same handlers — so nothing an existing user relies on moved. Task 12
- * redesigns the markup; this module only relocates the logic out of `main.ts`.
+ * The settings page: the left nav, the sections that only read state, and the three data
+ * views added in v1.1 — Tools, Activity and Appearance. Every id the pre-rewrite page used
+ * is still here, because connect flows, tests and muscle memory all point at them.
+ *
+ * Sections redraw only while they are on screen. State is broadcast on every page event and
+ * a sixty-nine-row table is real work; `showSection` redraws on the way in instead.
  */
 
 const settingsEl = () => document.getElementById("settings")!;
+const SUMMARY_MAX = 80;
 let recListKey = "";
 let snippetsToken = "";
 let snippetsLocalUrl = "";
 let snippetsLanUrl = "";
 let rerender: (state: AppState) => void = () => {};
+/** The last state the page saw, so a section switch can draw without waiting for the next one. */
+let latest: AppState | null = null;
+/** The manifest never changes while the app runs, so it is fetched once. */
+let manifest: ToolManifestEntry[] | null = null;
+let toolsKey = "";
+let activityKey = "";
 
 export function initSettings(onState: (state: AppState) => void): void {
   rerender = onState;
@@ -21,11 +34,16 @@ export function initSettings(onState: (state: AppState) => void): void {
   document.getElementById("settings-back")!.addEventListener("click", () => void closeSettings());
 
   for (const item of document.querySelectorAll(".nav-item")) {
+    const icon = (item as HTMLElement).dataset.icon;
+    if (icon) item.prepend(svgIcon(icon, "nav-icon"));
     item.addEventListener("click", () => {
       const section = (item as HTMLElement).dataset.section;
       if (section) showSection(section);
     });
   }
+
+  const search = document.getElementById("settings-search") as HTMLInputElement | null;
+  search?.addEventListener("input", () => applySearch(search.value));
 
   for (const btn of document.querySelectorAll("[data-open-section]")) {
     btn.addEventListener("click", () => {
@@ -115,6 +133,41 @@ export function initSettings(onState: (state: AppState) => void): void {
     });
   }
 
+  document.getElementById("activity-clear")!.addEventListener("click", () => {
+    void window.lb.clearActivity().then(() => toast("Activity cleared", "ok"));
+  });
+
+  document.getElementById("activity-pause")!.addEventListener("click", async () => {
+    const paused = latest?.activity.paused === true;
+    await window.lb.setPaused(!paused);
+    toast(paused ? "Assistant resumed" : "Assistant paused", paused ? "ok" : "info");
+  });
+
+  const evaluateInput = document.getElementById("evaluate-enabled") as HTMLInputElement;
+  evaluateInput.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateSettings({ evaluateEnabled: evaluateInput.checked });
+  });
+
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="theme"]')) {
+    radio.addEventListener("change", () => {
+      if (!radio.checked || !window.lb) return;
+      void window.lb.updateSettings({ theme: radio.value as AppSettings["theme"] });
+    });
+  }
+
+  const compact = document.getElementById("compact-chrome") as HTMLInputElement;
+  compact.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateSettings({ compactChrome: compact.checked });
+  });
+
+  const homeUrl = document.getElementById("home-url") as HTMLInputElement;
+  document.getElementById("home-url-save")!.addEventListener("click", () => saveHomeUrl(homeUrl));
+  homeUrl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") saveHomeUrl(homeUrl);
+  });
+
   const autostart = document.getElementById("autostart") as HTMLInputElement;
   if (window.lb) {
     void window.lb.getAutostart().then((on) => {
@@ -136,6 +189,7 @@ export function initSettings(onState: (state: AppState) => void): void {
  * one is measurable work for something nobody can see. `openSettings` redraws on the way in.
  */
 export function renderSettings(next: AppState): void {
+  latest = next;
   if (settingsEl().hidden) return;
   text("mcp-url", next.mcp.url);
   text("mcp-lan-url", next.mcp.lanUrl || "No network address found");
@@ -203,7 +257,246 @@ export function renderSettings(next: AppState): void {
   text("tool-count", String(next.toolCount));
   text("about-version", `Version ${next.version} · Chromium-based · runs only on this computer`);
 
+  const evaluateInput = document.getElementById("evaluate-enabled") as HTMLInputElement | null;
+  if (evaluateInput) evaluateInput.checked = next.settings.evaluateEnabled;
+
   renderRecorder(next);
+  renderTools(next);
+  renderActivity(next);
+  renderAppearance(next);
+}
+
+/* ------------------------------------------------------------------ tools */
+
+function sectionVisible(id: string): boolean {
+  const node = document.getElementById(`section-${id}`);
+  return !!node && !node.hidden && !settingsEl().hidden;
+}
+
+/** `evaluate` is the one tool a group switch does not decide on its own. */
+function toolIsOn(entry: ToolManifestEntry, next: AppState): boolean {
+  if (entry.group === "always") return true;
+  const groupOn = next.transfer[entry.group as keyof AppState["transfer"]] === true;
+  if (entry.name === "evaluate") return groupOn && next.settings.evaluateEnabled;
+  return groupOn;
+}
+
+function renderTools(next: AppState): void {
+  const table = document.getElementById("tools-table") as HTMLTableElement | null;
+  if (!table || !sectionVisible("tools")) return;
+  if (!manifest) {
+    void loadManifest();
+    return;
+  }
+  const key = `${JSON.stringify(next.transfer)}:${next.settings.evaluateEnabled}`;
+  if (key === toolsKey) return;
+  toolsKey = key;
+
+  const rows = manifest;
+  const on = rows.filter((entry) => toolIsOn(entry, next)).length;
+  text("tools-summary", `${on} of ${rows.length} tools on`);
+
+  const head = h(
+    "thead",
+    {},
+    h(
+      "tr",
+      {},
+      h("th", { text: "Tool" }),
+      h("th", { text: "Group" }),
+      h("th", { text: "Status" }),
+      h("th", { text: "Description" }),
+    ),
+  );
+  const body = h(
+    "tbody",
+    {},
+    ...rows.map((entry) => {
+      const live = toolIsOn(entry, next);
+      return h(
+        "tr",
+        {},
+        h("td", { class: "mono", text: entry.name }),
+        h("td", { class: "group", text: GROUP_LABELS[entry.group as ToolGroup] ?? entry.group }),
+        h("td", {}, h("span", { class: `state${live ? " on" : ""}`, text: live ? "On" : "Off" })),
+        h("td", { class: "desc", text: entry.description }),
+      );
+    }),
+  );
+  table.replaceChildren(head, body);
+}
+
+async function loadManifest(): Promise<void> {
+  if (manifest) return;
+  manifest = window.lb ? await window.lb.toolManifest().catch(() => TOOL_MANIFEST) : TOOL_MANIFEST;
+  if (latest) {
+    toolsKey = "";
+    renderTools(latest);
+  }
+}
+
+/* --------------------------------------------------------------- activity */
+
+function renderActivity(next: AppState): void {
+  const table = document.getElementById("activity-table") as HTMLTableElement | null;
+  if (!table || !sectionVisible("activity")) return;
+
+  const count = next.activity.count;
+  text("activity-count", `${count} ${count === 1 ? "call" : "calls"} this session`);
+  const pause = document.getElementById("activity-pause") as HTMLButtonElement | null;
+  if (pause) pause.textContent = next.activity.paused ? "Resume" : "Pause";
+
+  const key = `${next.activity.paused}:${next.activity.recent.map((e) => e.id).join(",")}`;
+  if (key === activityKey) return;
+  activityKey = key;
+
+  if (!next.activity.recent.length) {
+    table.replaceChildren(
+      h(
+        "tbody",
+        {},
+        h(
+          "tr",
+          {},
+          h("td", {
+            class: "empty",
+            colspan: "5",
+            text: next.connect.liveCount
+              ? "No calls yet. Ask your assistant to open a page."
+              : "No assistant connected. Open Connections to connect one.",
+          }),
+        ),
+      ),
+    );
+    return;
+  }
+
+  const head = h(
+    "thead",
+    {},
+    h(
+      "tr",
+      {},
+      h("th", { text: "Time" }),
+      h("th", { text: "Client" }),
+      h("th", { text: "Tool" }),
+      h("th", { text: "Took" }),
+      h("th", { text: "Result" }),
+    ),
+  );
+  const body = h(
+    "tbody",
+    {},
+    ...next.activity.recent.map((entry) => {
+      const summary = entry.summary || (entry.ok ? "Done" : "Failed");
+      const short = summary.length > SUMMARY_MAX ? `${summary.slice(0, SUMMARY_MAX - 1)}…` : summary;
+      const result = h("td", { class: "desc", title: summary });
+      result.append(
+        h("span", { class: `mark ${entry.ok ? "ok" : "bad"}`, text: entry.ok ? "\u2713" : "\u2717" }),
+        " ",
+        short,
+      );
+      return h(
+        "tr",
+        {},
+        h("td", { class: "mono", text: clockTime(entry.startedAt) }),
+        h("td", { class: "dim", text: entry.client || "unknown" }),
+        h("td", { class: "mono", text: entry.tool }),
+        h("td", { class: "num dim", text: formatMs(entry.ms) }),
+        result,
+      );
+    }),
+  );
+  table.replaceChildren(head, body);
+}
+
+/** Local HH:MM:SS. The stamp is an ISO string, which nobody reads at a glance. */
+function clockTime(iso: string): string {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return "--:--:--";
+  return when.toLocaleTimeString(undefined, {
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+/* ------------------------------------------------------------- appearance */
+
+function renderAppearance(next: AppState): void {
+  if (!sectionVisible("appearance")) return;
+  for (const radio of document.querySelectorAll<HTMLInputElement>('input[name="theme"]')) {
+    radio.checked = radio.value === next.settings.theme;
+  }
+  const compact = document.getElementById("compact-chrome") as HTMLInputElement | null;
+  if (compact) compact.checked = next.settings.compactChrome;
+  const homeUrl = document.getElementById("home-url") as HTMLInputElement | null;
+  // Never overwrite a URL half-typed.
+  if (homeUrl && document.activeElement !== homeUrl) homeUrl.value = next.settings.homeUrl;
+}
+
+function saveHomeUrl(input: HTMLInputElement): void {
+  const value = input.value.trim();
+  if (!/^https?:\/\//i.test(value)) {
+    toast("Enter a full URL starting with http:// or https://", "error");
+    return;
+  }
+  if (!window.lb) return;
+  void window.lb.updateSettings({ homeUrl: value }).then(() => toast("Home page saved", "ok"));
+}
+
+/* ----------------------------------------------------------------- search */
+
+/**
+ * Filters the nav and the cards at once. A section stays in the nav when its own name matches
+ * *or* it holds a matching card, so searching "token" keeps Connections reachable rather than
+ * hiding the only place the match lives.
+ */
+function applySearch(raw: string): void {
+  const query = raw.trim().toLowerCase();
+  let firstVisible = "";
+  let anyVisible = false;
+
+  for (const item of document.querySelectorAll<HTMLElement>(".nav-item")) {
+    const id = item.dataset.section ?? "";
+    const section = document.getElementById(`section-${id}`);
+    const navText = (item.textContent ?? "").toLowerCase();
+    const sectionText = (section?.textContent ?? "").toLowerCase();
+    const hit = !query || navText.includes(query) || sectionText.includes(query);
+    item.classList.toggle("filtered", !hit);
+    if (hit) {
+      anyVisible = true;
+      if (!firstVisible) firstVisible = id;
+    }
+    if (!section) continue;
+    for (const card of section.querySelectorAll<HTMLElement>(".card")) {
+      const cardHit = !query || (card.textContent ?? "").toLowerCase().includes(query);
+      card.classList.toggle("filtered", !cardHit);
+    }
+    for (const panel of section.querySelectorAll<HTMLElement>(".panel")) {
+      const cards = [...panel.querySelectorAll<HTMLElement>(".card")];
+      const empty = cards.length > 0 && cards.every((card) => card.classList.contains("filtered"));
+      panel.classList.toggle("filtered", empty);
+    }
+  }
+
+  const emptyNote = document.getElementById("settings-search-empty");
+  if (emptyNote) emptyNote.hidden = anyVisible;
+
+  // Landing on a section with nothing left to show reads as a broken search.
+  if (query && firstVisible) {
+    const active = document.querySelector<HTMLElement>(".nav-item.active");
+    if (!active || active.classList.contains("filtered")) showSection(firstVisible);
+  }
+}
+
+function clearSearch(): void {
+  const search = document.getElementById("settings-search") as HTMLInputElement | null;
+  if (search) search.value = "";
+  for (const node of document.querySelectorAll(".filtered")) node.classList.remove("filtered");
+  const emptyNote = document.getElementById("settings-search-empty");
+  if (emptyNote) emptyNote.hidden = true;
 }
 
 function renderRecorder(next: AppState): void {
@@ -323,6 +616,7 @@ function applyPlatformCopy(platform: string): void {
 }
 
 export async function openSettings(section?: string): Promise<void> {
+  clearSearch();
   settingsEl().hidden = false;
   setOpenClass(true);
   if (window.lb) await window.lb.setSettings(true);
@@ -360,14 +654,21 @@ function setOpenClass(open: boolean): void {
 }
 
 export function showSection(id: string): void {
-  // Sections that do not exist yet (Activity lands in the next task) fall back to Connections
-  // rather than leaving an empty pane.
+  // A name nothing wired up falls back to Connections rather than leaving an empty pane.
   const target = document.getElementById(`section-${id}`) ? id : "connections";
   for (const section of document.querySelectorAll(".card-list")) {
     (section as HTMLElement).hidden = section.id !== `section-${target}`;
   }
   for (const item of document.querySelectorAll(".nav-item")) {
     item.classList.toggle("active", (item as HTMLElement).dataset.section === target);
+  }
+  const content = document.querySelector(".settings-content");
+  if (content) content.scrollTop = 0;
+  // The three data sections skip their draw while hidden, so they redraw on the way in.
+  if (latest) {
+    renderTools(latest);
+    renderActivity(latest);
+    renderAppearance(latest);
   }
 }
 

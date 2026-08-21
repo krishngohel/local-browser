@@ -30,6 +30,7 @@
   --overlay-h: 0px;
   --font: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -44,10 +45,12 @@
     --accent-soft: #232648;
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     --hover: rgba(231, 233, 238, 0.08);
+    color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0f1115;
   --surface: #171a21;
   --surface-2: #1f232c;
@@ -115,6 +118,8 @@ textarea {
 
 .snippet,
 code,
+input,
+textarea,
 .legal p,
 .legal li {
   user-select: text;
@@ -1076,23 +1081,62 @@ body.settings-open .toasts {
 
 .settings-body {
   display: grid;
-  grid-template-columns: 208px 1fr;
+  grid-template-columns: 220px 1fr;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
 
 .settings-nav {
-  padding: 16px 12px;
+  padding: 14px 12px;
   background: var(--bg);
   border-right: 1px solid var(--line);
   overflow-y: auto;
 }
 
-.nav-item {
-  display: block;
+.nav-search {
+  margin: 0 2px 12px;
+}
+
+.nav-search input {
   width: 100%;
-  padding: 8px 14px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.nav-search input::placeholder {
+  color: var(--muted);
+}
+
+.nav-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-empty {
+  margin: 10px 4px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nav-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -1105,6 +1149,22 @@ body.settings-open .toasts {
     color 150ms ease;
 }
 
+.nav-icon {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  fill: var(--muted);
+  transition: fill 150ms ease;
+}
+
+.nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .nav-item:hover {
   background: var(--hover);
 }
@@ -1113,6 +1173,22 @@ body.settings-open .toasts {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 600;
+}
+
+.nav-item.active .nav-icon {
+  fill: var(--accent);
+}
+
+/* The indicator bar reads as the rail Chrome and VS Code both use for the live section. */
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -12px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
 }
 
 .settings-content {
@@ -1177,7 +1253,7 @@ body.settings-open .toasts {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 18px;
+  padding: 16px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -1211,6 +1287,12 @@ body.settings-open .toasts {
   font-weight: 600;
 }
 
+.card > div > .meta,
+.card > div > .help,
+.card > div > .tokens {
+  margin: 3px 0 0;
+}
+
 .legal h3 {
   margin: 20px 0 8px;
   font-size: 15px;
@@ -1227,6 +1309,10 @@ body.settings-open .toasts {
 .legal ul {
   margin: 0 0 12px;
   padding-left: 20px;
+}
+
+.url-row .meta {
+  margin: 3px 0 0;
 }
 
 .url-row {
@@ -1369,9 +1455,352 @@ code {
   outline-offset: 2px;
 }
 
+.settings-content,
+.settings-nav,
+.table-wrap,
+.palette-list,
+.pop-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+
+.settings-content::-webkit-scrollbar,
+.settings-nav::-webkit-scrollbar,
+.table-wrap::-webkit-scrollbar,
+.palette-list::-webkit-scrollbar,
+.pop-list::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.settings-content::-webkit-scrollbar-track,
+.settings-nav::-webkit-scrollbar-track,
+.table-wrap::-webkit-scrollbar-track,
+.palette-list::-webkit-scrollbar-track,
+.pop-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.settings-content::-webkit-scrollbar-thumb,
+.settings-nav::-webkit-scrollbar-thumb,
+.table-wrap::-webkit-scrollbar-thumb,
+.palette-list::-webkit-scrollbar-thumb,
+.pop-list::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--line);
+  background-clip: content-box;
+}
+
+.settings-content::-webkit-scrollbar-thumb:hover,
+.settings-nav::-webkit-scrollbar-thumb:hover,
+.table-wrap::-webkit-scrollbar-thumb:hover,
+.palette-list::-webkit-scrollbar-thumb:hover,
+.pop-list::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: content-box;
+}
+
 /* The pill replaced it; the node stays for id compatibility only. */
 .led {
   display: none;
+}
+
+/* ------------------------------------------------- settings data tables */
+
+.count-line {
+  margin: 0 0 16px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+table.grid th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+table.grid td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  vertical-align: top;
+  line-height: 1.45;
+}
+
+table.grid tr:last-child td {
+  border-bottom: 0;
+}
+
+table.grid td.mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+table.grid td.dim {
+  color: var(--muted);
+}
+
+table.grid td.group {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+table.grid td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+table.grid td.desc {
+  color: var(--muted);
+  min-width: 220px;
+}
+
+table.grid .empty {
+  padding: 24px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.state {
+  display: inline-block;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.state.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mark {
+  font-weight: 700;
+}
+
+.mark.ok {
+  color: var(--live);
+}
+
+.mark.bad {
+  color: var(--danger);
+}
+
+/* ------------------------------------------------------------ appearance */
+
+.segmented {
+  display: flex;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.seg {
+  position: relative;
+}
+
+.seg input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: default;
+}
+
+.seg span {
+  display: block;
+  padding: 5px 14px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.seg input:checked + span {
+  background: var(--accent);
+  color: #fff;
+}
+
+.seg input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 460px;
+}
+
+.text-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+
+.text-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/* Search filtering. `hidden` is taken: sections use it to switch panes. */
+.filtered {
+  display: none !important;
+}
+
+/* -------------------------------------------------------------- palette */
+
+.palette {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+}
+
+.palette-panel {
+  position: absolute;
+  top: 15vh;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 560px;
+  max-width: calc(100vw - 32px);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: palette-in 120ms ease-out;
+}
+
+.palette-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.palette-glyph {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  fill: var(--muted);
+}
+
+.palette-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 48px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.palette-input:focus {
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--muted);
+}
+
+.palette-list {
+  max-height: 396px;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.palette-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--r-sm);
+  cursor: default;
+}
+
+.palette-row.on {
+  background: var(--accent-soft);
+}
+
+.palette-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 32px;
+}
+
+.palette-row.on .palette-label {
+  color: var(--accent);
+}
+
+.palette-hint {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.palette-empty {
+  margin: 0;
+  padding: 18px 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
