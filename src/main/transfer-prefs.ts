@@ -22,7 +22,7 @@ export const DEFAULT_TRANSFER_PREFS: TransferPrefs = {
 
 export const TOOL_GROUP_COUNTS = {
   always: 1,
-  toolsBrowse: 16,
+  toolsBrowse: 15,
   toolsSee: 2,
   toolsSearch: 2,
   toolsDebug: 2,

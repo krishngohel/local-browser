@@ -9,7 +9,7 @@ import { dropMcpSession, mcpLiveStatus, noteMcpRequest } from "./mcp-sessions";
 
 export function startMcpHttp(
   token: string,
-  register: (server: McpServer) => void,
+  register: (server: McpServer, clientName: () => string) => void,
   version = "1.0.0",
 ): Promise<{ close: () => void; port: number }> {
   const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -91,7 +91,8 @@ export function startMcpHttp(
           instructions: mcpInstructions(),
         },
       );
-      register(server);
+      const clientName = () => server.server.getClientVersion()?.name ?? "assistant";
+      register(server, clientName);
       server.server.oninitialized = () => {
         const id = transport.sessionId;
         noteMcpRequest(id, req, server.server.getClientVersion());

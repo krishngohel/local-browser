@@ -16,6 +16,7 @@ import { connectSnippets, connectStatus, claudeConfigRevealTarget, registerChatG
 import { startMcpHttp } from "./mcp-http";
 import { mcpLiveStatus, setMcpSessionListener } from "./mcp-sessions";
 import { registerTools } from "../mcp/register-tools";
+import { TOOL_MANIFEST } from "../shared/tool-manifest";
 import { CDP_PORT, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpPort, mcpUrl, mcpUrlForHost, userDataDir, writeMcpPortFile } from "./paths";
 import { lanIPv4s } from "./net";
 import { getOrCreateToken } from "./token";
@@ -365,6 +366,7 @@ function registerIpc(): void {
     return removed;
   });
   ipcMain.handle("history:search", (_e, q: string) => history.search(String(q ?? ""), 8));
+  ipcMain.handle("tools:manifest", () => TOOL_MANIFEST);
   ipcMain.handle("menu:app", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const menu = Menu.buildFromTemplate([
@@ -559,7 +561,23 @@ if (!gotLock) {
     registerIpc();
 
     try {
-      await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder, activity), app.getVersion());
+      await startMcpHttp(
+        token,
+        (server, clientName) =>
+          registerTools(server, {
+            hub,
+            tests,
+            recorder,
+            activity,
+            clientName,
+            history,
+            bookmarks,
+            downloads,
+            settings: getSettings,
+            prefs: getTransferPrefs(),
+          }),
+        app.getVersion(),
+      );
       mcpListening = true;
       writeMcpPortFile(mcpPort());
       broadcast();
