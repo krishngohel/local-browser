@@ -7,6 +7,7 @@ import type { ActivityLog } from "../../main/activity";
 import type { History } from "../../main/history";
 import type { Bookmarks } from "../../main/bookmarks";
 import type { Downloads } from "../../main/downloads";
+import type { DialogPolicies } from "../../main/dialogs";
 import type { AppSettings, TransferPrefs } from "../../shared/types";
 
 export type ToolContent =
@@ -28,8 +29,8 @@ export type ToolDeps = {
   settings: () => AppSettings;
   /** Snapshot of the transfer prefs taken when the session registered its tools. */
   prefs: TransferPrefs;
-  /** Task 6 fills this in with DialogPolicies. */
-  dialogs?: unknown;
+  /** Per-tab alert/confirm/prompt policies, shared with the hub. */
+  dialogs: DialogPolicies;
   /** Task 9 fills this in with Scheduler. */
   scheduler?: unknown;
 };

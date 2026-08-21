@@ -2,7 +2,15 @@ import { BrowserView, BrowserWindow, net, session, nativeImage, type Session } f
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { pwBridge, type PwBrowser, type PwCdpSession, type PwPage, type ScreencastFrame } from "./pw-bridge";
+import {
+  pwBridge,
+  type PwBrowser,
+  type PwCdpSession,
+  type PwFrame,
+  type PwLocatorRoot,
+  type PwPage,
+  type ScreencastFrame,
+} from "./pw-bridge";
 import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
 import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
@@ -11,11 +19,15 @@ import {
   PAGE_INFO_SCRIPT,
   getTextScript,
   htmlScript,
+  keyChordScript,
   linksScript,
+  mouseEventScript,
+  mouseEventSelectorsScript,
   tablesScript,
 } from "./page-scripts";
 import { extractPdfText, pdfPageCount } from "./pdf-text";
 import type { Recorder } from "./recordings";
+import { DialogPolicies, type DialogPolicy, type DialogSeen } from "./dialogs";
 import type { Downloads } from "./downloads";
 import type { History } from "./history";
 import type { TabInfo } from "../shared/types";
@@ -101,9 +113,23 @@ export class BrowserHub {
   private chromeHeight = CHROME_HEIGHT;
   private thumbs = new Map<string, { at: number; data: string }>();
   private headerSessions = new WeakSet<Session>();
+  private dialogs = new DialogPolicies();
+  /** Tab ids whose Playwright page already has a `dialog` listener, so it is attached once. */
+  private dialogHooked = new Set<string>();
+  /**
+   * Index into `mainFrame.framesInSubtree` that snapshot/read/click currently target, or
+   * null for the main frame. `frameUrl` is kept alongside it because Playwright's own frame
+   * order can differ from Electron's, so the URL is the reliable way to line them up.
+   */
+  private frameIndex: number | null = null;
+  private frameUrl: string | null = null;
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
+  }
+
+  setDialogs(d: DialogPolicies): void {
+    this.dialogs = d;
   }
 
   setHistory(h: History): void {
@@ -320,6 +346,8 @@ export class BrowserHub {
     tab.view.webContents.close();
     this.tabs.delete(id);
     this.thumbs.delete(id);
+    this.dialogHooked.delete(id);
+    this.dialogs.forget(id);
     this.order = this.order.filter((x) => x !== id);
     if (this.activeId === id) {
       this.selectTab(this.order[this.order.length - 1], { record: false });
@@ -599,9 +627,53 @@ export class BrowserHub {
     }
   }
 
-  async snapshot(): Promise<SnapshotItem[]> {
+  /**
+   * Runs page JavaScript in whichever frame is currently selected — the main frame unless
+   * `frame_select` picked an iframe. Every ref-based read and every non-Playwright fallback
+   * goes through here so a selected frame is honoured consistently.
+   */
+  private async exec(js: string): Promise<unknown> {
     const wc = this.requireActive().view.webContents;
-    const items = (await wc.executeJavaScript(`(() => {
+    if (this.frameIndex === null) return wc.executeJavaScript(js);
+    const frame = wc.mainFrame.framesInSubtree[this.frameIndex];
+    if (!frame) {
+      throw new Error(`Frame ${this.frameIndex} is gone. Call frames, then frame_select again.`);
+    }
+    return frame.executeJavaScript(js);
+  }
+
+  listFrames(): { index: number; url: string; name: string }[] {
+    const wc = this.requireActive().view.webContents;
+    return wc.mainFrame.framesInSubtree.map((frame, index) => ({
+      index,
+      url: frame.url || "",
+      name: frame.name || "",
+    }));
+  }
+
+  /** Index 0 is the main frame; null also returns to it. */
+  selectFrame(index: number | null): { index: number | null; url: string; name: string } {
+    if (index === null || index === 0) {
+      this.frameIndex = null;
+      this.frameUrl = null;
+      this.snapshotByRef.clear();
+      return { index: null, url: this.activeUrl(), name: "" };
+    }
+    const frames = this.listFrames();
+    const frame = frames[index];
+    if (!frame) throw new Error(`No frame at index ${index}. Call frames to list them.`);
+    this.frameIndex = index;
+    this.frameUrl = frame.url || null;
+    this.snapshotByRef.clear();
+    return frame;
+  }
+
+  selectedFrame(): number | null {
+    return this.frameIndex;
+  }
+
+  async snapshot(): Promise<SnapshotItem[]> {
+    const items = (await this.exec(`(() => {
       ${ECHO_SELECTORS_SOURCE}
       const sel = 'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
       const nodes = Array.from(document.querySelectorAll(sel)).slice(0, 250);
@@ -628,10 +700,10 @@ export class BrowserHub {
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
-      await this.withPage(async (page) => {
-        await page.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().click({ timeout: 8000 });
+      await this.withPage(async (_page, root) => {
+        await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().click({ timeout: 8000 });
       }, async () => {
-        const found = await this.requireActive().view.webContents.executeJavaScript(`(() => {
+        const found = await this.exec(`(() => {
           const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
           if (!el) return false;
           el.click();
@@ -649,13 +721,13 @@ export class BrowserHub {
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
-      await this.withPage(async (page) => {
-        const loc = page.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
+      await this.withPage(async (_page, root) => {
+        const loc = root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
         await loc.click({ timeout: 8000 });
         await loc.fill(text);
         if (submit) await loc.press("Enter");
       }, async () => {
-        await this.requireActive().view.webContents.executeJavaScript(`(() => {
+        await this.exec(`(() => {
           const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
           if (!el) throw new Error('ref not found');
           el.focus();
@@ -688,7 +760,7 @@ export class BrowserHub {
           await page.keyboard.press(key);
         },
         async () => {
-          await this.requireActive().view.webContents.executeJavaScript(
+          await this.exec(
             `document.activeElement && document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`,
           );
         },
@@ -710,11 +782,11 @@ export class BrowserHub {
     this.rec?.beginIgnore();
     try {
       await this.withPage(
-        async (page) => {
-          await page.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().selectOption(value);
+        async (_page, root) => {
+          await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().selectOption(value);
         },
         async () => {
-          await this.requireActive().view.webContents.executeJavaScript(`(() => {
+          await this.exec(`(() => {
             const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
             if (!el) throw new Error('ref not found');
             el.value = ${JSON.stringify(value)};
@@ -726,6 +798,169 @@ export class BrowserHub {
     } finally {
       this.rec?.endIgnoreSoon();
     }
+  }
+
+  async hover(ref: string): Promise<void> {
+    const resolved = await this.resolveSelectors(ref);
+    this.rec?.beginIgnore();
+    try {
+      await this.withPage(
+        async (_page, root) => {
+          await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().hover({ timeout: 8000 });
+        },
+        async () => {
+          const found = await this.exec(mouseEventScript(ref, ["mouseover", "mouseenter", "mousemove"]));
+          if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+        },
+      );
+      this.rec?.record({ type: "hover", selectors: resolved.selectors });
+    } finally {
+      this.rec?.endIgnoreSoon();
+    }
+  }
+
+  /** Recorded-playback hover: the first selector that resolves wins. */
+  async hoverSelectors(selectors: string[]): Promise<void> {
+    this.rec?.beginIgnore();
+    try {
+      const target = await this.pwTarget();
+      if (target) {
+        for (const sel of selectors) {
+          try {
+            await target.root.locator(sel).first().hover({ timeout: 2500 });
+            return;
+          } catch {
+            /* try next selector */
+          }
+        }
+      }
+      const found = await this.exec(
+        mouseEventSelectorsScript(selectors, ["mouseover", "mouseenter", "mousemove"]),
+      );
+      if (!found) throw new Error("Could not find the recorded element. The page may have changed.");
+    } finally {
+      this.rec?.endIgnoreSoon();
+    }
+  }
+
+  async doubleClick(ref: string): Promise<void> {
+    this.rec?.beginIgnore();
+    try {
+      await this.withPage(
+        async (_page, root) => {
+          await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().dblclick({ timeout: 8000 });
+        },
+        async () => {
+          const found = await this.exec(
+            mouseEventScript(ref, ["mousedown", "mouseup", "click", "mousedown", "mouseup", "click", "dblclick"]),
+          );
+          if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+        },
+      );
+    } finally {
+      this.rec?.endIgnoreSoon();
+    }
+  }
+
+  async rightClick(ref: string): Promise<void> {
+    this.rec?.beginIgnore();
+    try {
+      await this.withPage(
+        async (_page, root) => {
+          await root
+            .locator(`[data-lb-ref="${cssEscape(ref)}"]`)
+            .first()
+            .click({ timeout: 8000, button: "right" });
+        },
+        async () => {
+          const found = await this.exec(mouseEventScript(ref, ["contextmenu"]));
+          if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+        },
+      );
+    } finally {
+      this.rec?.endIgnoreSoon();
+    }
+  }
+
+  /**
+   * Drag one ref onto another, or by a pixel offset. HTML5 drag-and-drop needs a real
+   * pointer sequence, which only Playwright can produce here — synthesised DOM events do not
+   * drive it — so this has no executeJavaScript fallback.
+   */
+  async drag(fromRef: string, to: { ref?: string; dx?: number; dy?: number }): Promise<string> {
+    const target = await this.pwTarget();
+    if (!target) throw new Error("drag needs Playwright attached; retry in a moment");
+    const from = target.root.locator(`[data-lb-ref="${cssEscape(fromRef)}"]`).first();
+    if (to.ref) {
+      const dest = target.root.locator(`[data-lb-ref="${cssEscape(to.ref)}"]`).first();
+      await from.dragTo(dest, { timeout: 10_000 });
+      return `Dragged ${fromRef} onto ${to.ref}`;
+    }
+    const dx = Number(to.dx) || 0;
+    const dy = Number(to.dy) || 0;
+    const box = await from.boundingBox({ timeout: 8000 });
+    if (!box) throw new Error(`Ref ${fromRef} has no on-screen box. Call snapshot first.`);
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await target.page.mouse.move(x, y);
+    await target.page.mouse.down();
+    await target.page.mouse.move(x + dx, y + dy, { steps: 10 });
+    await target.page.mouse.up();
+    return `Dragged ${fromRef} by ${dx},${dy}`;
+  }
+
+  async shortcut(chord: string): Promise<void> {
+    const key = String(chord).trim();
+    if (!key) throw new Error("Give a key chord, e.g. Control+Shift+P.");
+    this.rec?.beginIgnore();
+    try {
+      await this.withPage(
+        async (page) => {
+          await page.keyboard.press(key);
+        },
+        async () => {
+          await this.exec(keyChordScript(key));
+        },
+      );
+    } finally {
+      this.rec?.endIgnoreSoon();
+    }
+  }
+
+  /** Sets files on a file input. Playwright only: `<input type=file>` cannot be filled from page JS. */
+  async uploadFile(ref: string, paths: string[]): Promise<string> {
+    const files = paths.map((p) => String(p).trim()).filter(Boolean);
+    if (!files.length) throw new Error("Give at least one file path.");
+    const missing = files.filter((f) => !fs.existsSync(f));
+    if (missing.length) throw new Error(`No such file: ${missing.join(", ")}`);
+    const target = await this.pwTarget();
+    if (!target) throw new Error("upload_file needs Playwright attached; retry in a moment");
+    await target.root
+      .locator(`[data-lb-ref="${cssEscape(ref)}"]`)
+      .first()
+      .setInputFiles(files, { timeout: 10_000 });
+    return `Set ${files.length} file${files.length === 1 ? "" : "s"} on ${ref}`;
+  }
+
+  /** Page zoom for the active tab. Omitted/`"reset"` returns to 1. */
+  zoom(factor: number | "reset"): number {
+    const wc = this.requireActive().view.webContents;
+    const value = factor === "reset" ? 1 : Math.max(0.25, Math.min(5, Number(factor) || 1));
+    wc.setZoomFactor(value);
+    return value;
+  }
+
+  /** JSON of an in-page expression, capped so a huge result cannot flood the transcript. */
+  async evaluate(js: string, maxChars = 20_000): Promise<string> {
+    const value = await this.exec(js);
+    let json: string;
+    try {
+      json = JSON.stringify(value) ?? "undefined";
+    } catch {
+      json = String(value);
+    }
+    return json.length > maxChars ? `${json.slice(0, maxChars)}
+[truncated at ${maxChars} chars]` : json;
   }
 
   async waitFor(opts: { text?: string; timeoutMs?: number; record?: boolean }): Promise<void> {
@@ -896,7 +1131,7 @@ export class BrowserHub {
   }
 
   async selectorsForRef(ref: string): Promise<string[]> {
-    return (await this.requireActive().view.webContents.executeJavaScript(`(() => {
+    return (await this.exec(`(() => {
       ${ECHO_SELECTORS_SOURCE}
       const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
       return el ? echoSelectors(el) : [];
@@ -976,9 +1211,8 @@ export class BrowserHub {
 
   /** Visible text of one snapshot ref, or of the whole body. */
   async getText(ref?: string, maxChars = 40_000): Promise<string> {
-    const wc = this.requireActive().view.webContents;
     const cap = Math.max(1, Math.min(maxChars, 40_000));
-    const value = (await wc.executeJavaScript(getTextScript(ref ?? null, cap))) as string | null;
+    const value = (await this.exec(getTextScript(ref ?? null, cap))) as string | null;
     if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
     return value;
   }
@@ -1246,6 +1480,12 @@ export class BrowserHub {
     });
     wc.on("did-navigate", () => {
       if (this.activeId === tab.id) this.snapshotByRef.clear();
+      // The frame tree is rebuilt by a top-level navigation, so a stale index would point at
+      // a different iframe (or none). Reads go back to the main frame.
+      if (this.frameIndex !== null && this.activeId === tab.id) {
+        this.frameIndex = null;
+        this.frameUrl = null;
+      }
       tab.favicon = null;
       this.thumbs.delete(tab.id);
       if (!tab.incognito) this.history?.add(wc.getURL(), wc.getTitle());
@@ -1296,16 +1536,91 @@ export class BrowserHub {
   private async playwrightPage(): Promise<PwPage | null> {
     await this.connectPlaywright();
     if (!this.pw) return null;
+    const tab = this.active();
+    if (!tab) return null;
     const url = this.activeUrl();
     if (!url || url.startsWith("file:")) return null;
     const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
-    return pages.find((p) => p.url() === url) || null;
+    const page = pages.find((p) => p.url() === url) || null;
+    if (page) this.hookDialogs(tab.id, page);
+    return page;
   }
 
-  private async withPage(pwFn: (page: PwPage) => Promise<void>, fallback: () => Promise<void>): Promise<void> {
+  /**
+   * Answers alert/confirm/prompt on this tab according to its policy, and remembers what it
+   * saw for the `dialog` tool. Registered once per tab: without a listener Playwright
+   * dismisses every dialog itself, so this is also what makes "accept" possible at all.
+   */
+  private hookDialogs(tabId: string, page: PwPage): void {
+    if (this.dialogHooked.has(tabId)) return;
+    this.dialogHooked.add(tabId);
+    try {
+      page.on("dialog", (d) => {
+        const policy = this.dialogs.get(tabId);
+        let message = "";
+        let type = "dialog";
+        try {
+          message = d.message();
+          type = d.type();
+        } catch {
+          /* the dialog may already be gone */
+        }
+        this.dialogs.note(tabId, {
+          type,
+          message,
+          handledAs: policy.action,
+          at: new Date().toISOString(),
+        });
+        const done = policy.action === "accept" ? d.accept(policy.promptText) : d.dismiss();
+        void Promise.resolve(done).catch(() => {
+          /* the page navigated away mid-dialog */
+        });
+      });
+    } catch {
+      this.dialogHooked.delete(tabId);
+    }
+  }
+
+  /** True once a Playwright page for the active tab exists (and so dialogs are intercepted). */
+  async dialogsAttached(): Promise<boolean> {
+    try {
+      return Boolean(await this.playwrightPage());
+    } catch {
+      return false;
+    }
+  }
+
+  setDialogPolicy(policy: DialogPolicy): void {
+    this.dialogs.set(this.requireActive().id, policy);
+  }
+
+  lastDialog(): DialogSeen | null {
+    return this.dialogs.last(this.requireActive().id);
+  }
+
+  /**
+   * The Playwright page plus the locator root for the selected frame. Returns null when
+   * Playwright is not attached, or when a frame is selected that Playwright cannot match —
+   * the caller then falls back to `exec`, which addresses frames through Electron instead.
+   */
+  private async pwTarget(): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
     const page = await this.playwrightPage();
-    if (page) {
-      await pwFn(page);
+    if (!page) return null;
+    if (this.frameIndex === null) return { page, root: page };
+    const frames: PwFrame[] = page.frames();
+    const byUrl = this.frameUrl ? frames.find((f) => f.url() === this.frameUrl) : undefined;
+    const root = byUrl ?? frames[this.frameIndex];
+    if (!root) return null;
+    return { page, root };
+  }
+
+  private async withPage(
+    pwFn: (page: PwPage, root: PwLocatorRoot) => Promise<void>,
+    fallback: () => Promise<void>,
+  ): Promise<void> {
+    const target = await this.pwTarget();
+    if (target) {
+      await pwFn(target.page, target.root);
       return;
     }
     await fallback();

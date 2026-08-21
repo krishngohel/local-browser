@@ -116,3 +116,98 @@ export const htmlScript = (ref: string | null, maxChars: number): string => `(()
   const html = el.outerHTML || '';
   return { html: html.slice(0, ${maxChars}), truncated: html.length > ${maxChars}, total: html.length };
 })()`;
+
+/**
+ * Dispatches a sequence of mouse events on one ref, centred on the element, for the
+ * hover/double_click/right_click fallbacks when Playwright is not attached. Returns false
+ * when the ref is gone so the caller can tell the assistant to snapshot again.
+ */
+export const mouseEventScript = (ref: string, events: string[]): string => `(() => {
+  const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
+  if (!el) return false;
+  el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  const rect = el.getBoundingClientRect();
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    view: window,
+    clientX: rect.left + rect.width / 2,
+    clientY: rect.top + rect.height / 2,
+    button: ${JSON.stringify(events.includes("contextmenu") ? 2 : 0)}
+  };
+  for (const type of ${JSON.stringify(events)}) el.dispatchEvent(new MouseEvent(type, init));
+  return true;
+})()`;
+
+/** Same, but for recorded playback: the first selector that matches wins. */
+export const mouseEventSelectorsScript = (selectors: string[], events: string[]): string => `(() => {
+  for (const sel of ${JSON.stringify(selectors)}) {
+    let el = null;
+    try { el = document.querySelector(sel); } catch (e) { el = null; }
+    if (!el) continue;
+    el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    const rect = el.getBoundingClientRect();
+    const init = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: rect.left + rect.width / 2,
+      clientY: rect.top + rect.height / 2
+    };
+    for (const type of ${JSON.stringify(events)}) el.dispatchEvent(new MouseEvent(type, init));
+    return true;
+  }
+  return false;
+})()`;
+
+export type KeyChord = { key: string; ctrl: boolean; shift: boolean; alt: boolean; meta: boolean };
+
+/**
+ * Splits a Playwright-style chord ("Control+Shift+P") into modifiers plus the final key.
+ * Pure and exported so the keyboard_shortcut fallback can be unit tested without a page.
+ */
+export function parseChord(chord: string): KeyChord {
+  const parts = String(chord)
+    .split("+")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const out: KeyChord = { key: "", ctrl: false, shift: false, alt: false, meta: false };
+  // A trailing "+" means the key itself is "+", e.g. "Control++".
+  if (/\+\s*$/.test(chord) && parts.length) parts.push("+");
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const lower = part.toLowerCase();
+    // Only the final segment is the key; everything before it is a modifier name.
+    if (i < parts.length - 1) {
+      if (lower === "control" || lower === "ctrl") { out.ctrl = true; continue; }
+      if (lower === "shift") { out.shift = true; continue; }
+      if (lower === "alt" || lower === "option") { out.alt = true; continue; }
+      if (lower === "meta" || lower === "command" || lower === "cmd") { out.meta = true; continue; }
+      if (lower === "controlormeta") { out.ctrl = true; continue; }
+    }
+    out.key = part;
+  }
+  if (!out.key) out.key = parts[parts.length - 1] ?? "";
+  return out;
+}
+
+/** Fallback for `keyboard_shortcut`: keydown (then keyup) on the focused element. */
+export const keyChordScript = (chord: string): string => {
+  const c = parseChord(chord);
+  return `(() => {
+  const el = document.activeElement || document.body;
+  if (!el) return false;
+  const init = {
+    key: ${JSON.stringify(c.key)},
+    ctrlKey: ${c.ctrl},
+    shiftKey: ${c.shift},
+    altKey: ${c.alt},
+    metaKey: ${c.meta},
+    bubbles: true,
+    cancelable: true
+  };
+  el.dispatchEvent(new KeyboardEvent('keydown', init));
+  el.dispatchEvent(new KeyboardEvent('keyup', init));
+  return true;
+})()`;
+};

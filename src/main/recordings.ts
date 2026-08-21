@@ -230,6 +230,10 @@ export class Recorder {
           /* already idle */
         }
         return;
+      case "hover":
+        await hub.hoverSelectors(action.selectors);
+        await sleep(200);
+        return;
       case "type":
         await hub.typeSelectors(action.selectors, action.text, Boolean(action.submit), action.name);
         await sleep(120);

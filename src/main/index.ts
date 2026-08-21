@@ -30,6 +30,7 @@ import { ActivityLog } from "./activity";
 import { History } from "./history";
 import { Bookmarks } from "./bookmarks";
 import { Downloads } from "./downloads";
+import { DialogPolicies } from "./dialogs";
 
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
@@ -44,6 +45,7 @@ const activity = new ActivityLog();
 let history: History;
 let bookmarks: Bookmarks;
 let downloads: Downloads;
+let dialogs: DialogPolicies;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let mcpListening = false;
@@ -546,6 +548,8 @@ if (!gotLock) {
       return;
     }
 
+    dialogs = new DialogPolicies();
+    hub.setDialogs(dialogs);
     history = new History(userDataDir());
     bookmarks = new Bookmarks(userDataDir());
     downloads = new Downloads();
@@ -575,6 +579,7 @@ if (!gotLock) {
             downloads,
             settings: getSettings,
             prefs: getTransferPrefs(),
+            dialogs,
           }),
         app.getVersion(),
       );

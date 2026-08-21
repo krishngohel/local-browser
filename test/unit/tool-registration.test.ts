@@ -2,13 +2,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ActivityLog } from "../../src/main/activity";
 import { DEFAULT_SETTINGS } from "../../src/main/settings";
+import { DialogPolicies } from "../../src/main/dialogs";
 import { DEFAULT_TRANSFER_PREFS } from "../../src/main/transfer-prefs";
 import { registerTools } from "../../src/mcp/register-tools";
 import type { ToolDeps } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
 import type { TransferPrefs } from "../../src/shared/types";
 
-/** Groups whose tools exist today. Later tasks add: toolsInteract, toolsState, toolsQa. */
+/** Groups whose tools exist today. Later tasks add: toolsState, toolsQa. */
 const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "always",
   "toolsBrowse",
@@ -18,6 +19,7 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "toolsTest",
   "toolsRecord",
   "toolsRead",
+  "toolsInteract",
 ];
 
 type Registered = { name: string; description: string };
@@ -45,6 +47,7 @@ function registerAll(): Registered[] {
     downloads: {} as never,
     settings: () => ({ ...DEFAULT_SETTINGS, evaluateEnabled: true }),
     prefs: allGroupsOn,
+    dialogs: new DialogPolicies(),
   };
   registerTools(server as never, deps);
   return registered;

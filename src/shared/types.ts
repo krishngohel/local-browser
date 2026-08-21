@@ -37,6 +37,7 @@ export type RecordedAction =
   | { type: "forward" }
   | { type: "reload" }
   | { type: "click"; selectors: string[]; text?: string }
+  | { type: "hover"; selectors: string[] }
   | { type: "type"; selectors: string[]; text: string; submit?: boolean; name?: string }
   | { type: "press"; key: string }
   | { type: "scroll"; deltaY: number }

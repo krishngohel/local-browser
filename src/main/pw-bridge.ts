@@ -1,14 +1,46 @@
+export type PwBoundingBox = { x: number; y: number; width: number; height: number };
+
 export type PwLocator = {
-  click: (opts?: { timeout?: number }) => Promise<void>;
+  click: (opts?: { timeout?: number; button?: "left" | "right" | "middle" }) => Promise<void>;
+  dblclick: (opts?: { timeout?: number }) => Promise<void>;
+  hover: (opts?: { timeout?: number }) => Promise<void>;
   fill: (value: string) => Promise<void>;
   press: (key: string) => Promise<void>;
   selectOption: (value: string) => Promise<void>;
+  dragTo: (target: PwLocator, opts?: { timeout?: number }) => Promise<void>;
+  boundingBox: (opts?: { timeout?: number }) => Promise<PwBoundingBox | null>;
+  setInputFiles: (files: string[], opts?: { timeout?: number }) => Promise<void>;
   first: () => PwLocator;
 };
 
-export type PwPage = {
+/** Anything locators can be built from — a page, or one of its frames. */
+export type PwLocatorRoot = {
   url: () => string;
   locator: (selector: string) => PwLocator;
+};
+
+export type PwFrame = PwLocatorRoot & {
+  name: () => string;
+};
+
+export type PwDialog = {
+  type: () => string;
+  message: () => string;
+  defaultValue?: () => string;
+  accept: (promptText?: string) => Promise<void>;
+  dismiss: () => Promise<void>;
+};
+
+export type PwMouse = {
+  move: (x: number, y: number, opts?: { steps?: number }) => Promise<void>;
+  down: (opts?: { button?: "left" | "right" | "middle" }) => Promise<void>;
+  up: (opts?: { button?: "left" | "right" | "middle" }) => Promise<void>;
+};
+
+export type PwPage = PwLocatorRoot & {
+  frames: () => PwFrame[];
+  mouse: PwMouse;
+  on: (event: "dialog", listener: (dialog: PwDialog) => void) => void;
   getByText: (text: string, opts?: { exact?: boolean }) => PwLocator;
   getByRole: (role: string, opts?: { name?: string; exact?: boolean }) => PwLocator;
   getByPlaceholder: (text: string) => PwLocator;

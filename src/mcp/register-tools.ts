@@ -8,6 +8,7 @@ import { registerDebug } from "./tools/debug";
 import { registerTest } from "./tools/test";
 import { registerRecord } from "./tools/record";
 import { registerRead } from "./tools/read";
+import { registerInteract } from "./tools/interact";
 
 export type { ToolDeps } from "./tools/_helpers";
 
@@ -30,4 +31,5 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   registerTest(server, deps);
   registerRecord(server, deps);
   registerRead(server, deps);
+  registerInteract(server, deps);
 }
