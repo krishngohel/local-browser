@@ -1,11 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { ActivityLog } from "../../src/main/activity";
 import { DEFAULT_SETTINGS } from "../../src/main/settings";
 import { DialogPolicies } from "../../src/main/dialogs";
-import { DEFAULT_TRANSFER_PREFS } from "../../src/main/transfer-prefs";
+import {
+  DEFAULT_TRANSFER_PREFS,
+  setTransferPrefs,
+  setTransferPrefsDir,
+} from "../../src/main/transfer-prefs";
 import { registerTools } from "../../src/mcp/register-tools";
-import type { ToolDeps } from "../../src/mcp/tools/_helpers";
+import type { ToolDeps, ToolResult } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
 import type { TransferPrefs } from "../../src/shared/types";
 
@@ -24,13 +31,14 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "toolsQa",
 ];
 
-type Registered = { name: string; description: string };
+type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+type Registered = { name: string; description: string; handler: Handler };
 
 function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
   const registered: Registered[] = [];
   const server = {
-    tool(name: string, description: string, _schema: unknown, _handler: unknown) {
-      registered.push({ name, description });
+    tool(name: string, description: string, _schema: unknown, handler: unknown) {
+      registered.push({ name, description, handler: handler as Handler });
     },
     registerResource() {},
     registerPrompt() {},
@@ -39,7 +47,8 @@ function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
     Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, true]),
   ) as TransferPrefs;
   const deps: ToolDeps = {
-    hub: {} as never,
+    // Enough of a hub for `tabs_list` to answer, so a handler can actually be called.
+    hub: { listTabs: () => [] } as never,
     tests: {} as never,
     recorder: {} as never,
     activity: new ActivityLog(),
@@ -90,3 +99,67 @@ test("evaluate is registered only when the user has enabled it", () => {
     assert.ok(off.includes(name), `${name} should register without evaluateEnabled`);
   }
 });
+
+/**
+ * `deps.prefs` is a snapshot taken at registration, so the switch is only a real control if
+ * every call re-reads the stored prefs. Registration happens with every group on; the group
+ * is then turned off underneath the already-registered handler, the way Settings does it to a
+ * connected assistant.
+ */
+test("turning a group off revokes its tools on an already-registered handler", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-tool-revoke-"));
+  setTransferPrefsDir(dir);
+  try {
+    const allOn = Object.fromEntries(
+      Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, true]),
+    ) as TransferPrefs;
+    setTransferPrefs(allOn);
+
+    const tabsList = registerAll().find((t) => t.name === "tabs_list");
+    assert.ok(tabsList, "tabs_list was not registered");
+
+    const before = await tabsList.handler({});
+    assert.notEqual(before.isError, true, `tabs_list failed with the group on: ${textOf(before)}`);
+    assert.equal(textOf(before), "[]");
+
+    setTransferPrefs({ toolsBrowse: false });
+    const revoked = await tabsList.handler({});
+    assert.equal(revoked.isError, true, "a tool in a turned-off group still ran");
+    assert.equal(
+      textOf(revoked),
+      "tabs_list is turned off in Echo Settings → Transfers (Browse and click). Turn the group on and retry.",
+    );
+
+    setTransferPrefs({ toolsBrowse: true });
+    const after = await tabsList.handler({});
+    assert.notEqual(after.isError, true, "turning the group back on did not restore the tool");
+    assert.equal(textOf(after), "[]");
+  } finally {
+    setTransferPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("echo_help is never revoked — its group is always on", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-tool-always-"));
+  setTransferPrefsDir(dir);
+  try {
+    setTransferPrefs(
+      Object.fromEntries(
+        Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, false]),
+      ) as TransferPrefs,
+    );
+    const help = registerAll().find((t) => t.name === "echo_help");
+    assert.ok(help, "echo_help was not registered");
+    const result = await help.handler({});
+    assert.notEqual(result.isError, true, `echo_help was refused: ${textOf(result)}`);
+  } finally {
+    setTransferPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function textOf(result: ToolResult): string {
+  const first = result.content.find((c) => c.type === "text") as { text?: string } | undefined;
+  return first?.text ?? "";
+}

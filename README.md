@@ -205,7 +205,7 @@ The assistant should call tools such as `search_web`, `navigate`, and `snapshot`
 
 **Command palette:** **Ctrl+K** (Cmd+K on Mac) opens a search box over the page for tabs, history, bookmarks, settings, and actions.
 
-**Incognito tab:** **Ctrl+Shift+N** (Cmd+Shift+N on Mac) opens a tab with its own throwaway cookie jar. It writes no history and keeps nothing after you close it.
+**Incognito tab:** **Ctrl+Shift+N** (Cmd+Shift+N on Mac) opens a tab on a shared throwaway cookie jar, cleared when the last incognito tab closes. It writes no history and keeps nothing after you close it.
 
 **Assistant pill:** while an AI client is connected, a pill in the toolbar shows the tool it is running. Click **Pause** there to stop the assistant mid-flow. Paused tools return "Echo is paused by the user" until you resume.
 

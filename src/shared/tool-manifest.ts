@@ -40,7 +40,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
 
   // Browse and click
   { name: "tabs_list", group: "toolsBrowse", description: "List open browser tabs." },
-  { name: "tabs_new", group: "toolsBrowse", description: "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with its own throwaway cookie jar and no history." },
+  { name: "tabs_new", group: "toolsBrowse", description: "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with no history, on a throwaway cookie jar shared by incognito tabs and cleared when the last one closes." },
   { name: "tabs_close", group: "toolsBrowse", description: "Close a tab by id." },
   { name: "tabs_select", group: "toolsBrowse", description: "Focus a tab by id." },
   {
@@ -245,7 +245,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "network_log",
     group: "toolsQa",
-    description: "Recent requests on this tab (method, url, status, type, ms, bytes), newest first.",
+    description: "Recent document and API requests on this tab (method, url, status, type, ms, bytes), newest first. Images, scripts, styles and fonts are not logged.",
   },
   {
     name: "schedule_recording",

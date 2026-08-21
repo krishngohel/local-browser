@@ -141,8 +141,20 @@ function drawPopover(): void {
     openSettings("activity");
   });
 
-  pop.replaceChildren(head, list, h("div", { class: "pop-foot" }, pauseBtn, activityBtn));
-  place("assistant", pop, pill.getBoundingClientRect(), { align: "right", width: 340 });
+  // The old toolbar LED opened Settings → Connections in one click. The LED is hidden now, so
+  // the pill carries that path: it is where a user goes when nothing is connected.
+  const connectionsBtn = h("button", { class: "pop-btn ghost", type: "button", text: "Connections" });
+  connectionsBtn.addEventListener("click", () => {
+    closePopover();
+    openSettings("connections");
+  });
+
+  pop.replaceChildren(
+    head,
+    list,
+    h("div", { class: "pop-foot" }, pauseBtn, activityBtn, connectionsBtn),
+  );
+  place("assistant", pop, pill.getBoundingClientRect(), { align: "right", width: 372 });
   pill.setAttribute("aria-expanded", "true");
 }
 

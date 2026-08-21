@@ -14,6 +14,7 @@ import {
 import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
 import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
+import { ASSISTANT_NAV_REFUSAL, isAssistantNavigable } from "../shared/url-policy";
 import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
@@ -126,8 +127,28 @@ type Tab = {
 };
 
 const HOME_URL = "https://www.google.com/";
+/**
+ * One shared memory-only partition for every incognito tab (no `persist:` prefix). Cleared
+ * when the last incognito tab closes — see `createTab` / `closeTab`.
+ */
+const INCOGNITO_PARTITION = "incognito";
 /** Per-tab request ring. Matches the `network_log` cap in the tool contract. */
 const NETWORK_LOG_CAP = 200;
+/**
+ * Resource types the request log records, and the only ones the blocking `onBeforeRequest`
+ * has to see. Documents and API traffic are what `network_log` and `network_failures` report;
+ * letting every image, script, font, and stylesheet round-trip through the main process would
+ * put a blocking hop on the same thread as the UI and the MCP server. The paired
+ * `onCompleted` / `onErrorOccurred` use the same filter so entries never arrive half-logged.
+ *
+ * `fetch()` is reported as `xhr` by Chromium, so it needs no entry of its own. `other` is not
+ * a filterable type — Electron rejects it with "Invalid type other" — so the handful of
+ * requests Chromium classifies that way (beacons, some worker traffic) are no longer logged.
+ */
+const NETWORK_FILTER: Electron.WebRequestFilter = {
+  urls: ["*://*/*"],
+  types: ["mainFrame", "subFrame", "xhr", "webSocket"],
+};
 /**
  * Favicons are fetched here, not by the renderer: the chrome's CSP is `img-src 'self' data:`,
  * so a remote icon URL can never be loaded there. Main downloads it in the tab's own session
@@ -364,7 +385,7 @@ export class BrowserHub {
     if (this.networkSessions.has(ses)) return;
     this.networkSessions.add(ses);
 
-    ses.webRequest.onBeforeRequest((details, callback) => {
+    ses.webRequest.onBeforeRequest(NETWORK_FILTER, (details, callback) => {
       try {
         const tab = this.tabForWebContents(details.webContentsId);
         if (tab) {
@@ -387,7 +408,7 @@ export class BrowserHub {
       callback({});
     });
 
-    ses.webRequest.onCompleted((details) => {
+    ses.webRequest.onCompleted(NETWORK_FILTER, (details) => {
       try {
         const started = this.pendingRequests.get(details.id);
         this.pendingRequests.delete(details.id);
@@ -414,7 +435,7 @@ export class BrowserHub {
       }
     });
 
-    ses.webRequest.onErrorOccurred((details) => {
+    ses.webRequest.onErrorOccurred(NETWORK_FILTER, (details) => {
       try {
         const started = this.pendingRequests.get(details.id);
         this.pendingRequests.delete(details.id);
@@ -461,9 +482,12 @@ export class BrowserHub {
     if (!this.window) throw new Error("Window not ready");
     const id = `tab-${++this.seq}`;
     const incognito = opts?.incognito === true;
-    // A non-"persist:" partition is memory-only, so an incognito tab leaves no
-    // cookies or cache behind. Each incognito tab gets its own.
-    const partition = incognito ? `incognito-${id}` : partitionName();
+    // A non-"persist:" partition is memory-only, so an incognito tab leaves no cookies or
+    // cache behind on disk. All incognito tabs share one, the way Chrome does: Electron 36
+    // has no public `Session.destroy()`, so a partition per tab would strand a session and
+    // its six webRequest listeners on every close. `closeTab` clears this one when the last
+    // incognito tab goes away.
+    const partition = incognito ? INCOGNITO_PARTITION : partitionName();
     if (incognito) this.prepareSession(session.fromPartition(partition));
     const view = new BrowserView({
       webPreferences: {
@@ -498,6 +522,15 @@ export class BrowserHub {
     void view.webContents.loadURL(target);
     this.onChange();
     return id;
+  }
+
+  /**
+   * `createTab` for anything that is not the user typing: MCP tools, recording replay, and a
+   * page calling `window.open`. Only web URLs get through — see `url-policy.ts`.
+   */
+  assistantCreateTab(url?: string, opts?: { record?: boolean; incognito?: boolean }): string {
+    if (url !== undefined && !isAssistantNavigable(url)) throw new Error(ASSISTANT_NAV_REFUSAL);
+    return this.createTab(url, opts);
   }
 
   selectTab(id: string, opts?: { record?: boolean }): void {
@@ -547,10 +580,30 @@ export class BrowserHub {
     this.dialogHooked.delete(id);
     this.dialogs.forget(id);
     this.order = this.order.filter((x) => x !== id);
+    if (tab.incognito) void this.releaseIncognitoIfLast();
     if (this.activeId === id) {
       this.selectTab(this.order[this.order.length - 1], { record: false });
     } else {
       this.onChange();
+    }
+  }
+
+  /**
+   * Empties the shared incognito session once no incognito tab is left.
+   *
+   * The partition is memory-only, so nothing was written to disk, but the session object
+   * itself outlives its tabs (Electron has no public `Session.destroy()`) and would otherwise
+   * carry cookies and cache from a closed private tab into the next one. Best effort: a
+   * failure here must never take a tab close down with it.
+   */
+  private async releaseIncognitoIfLast(): Promise<void> {
+    for (const other of this.tabs.values()) if (other.incognito) return;
+    try {
+      const ses = session.fromPartition(INCOGNITO_PARTITION);
+      await ses.clearStorageData();
+      await ses.clearCache();
+    } catch {
+      /* the session may already be gone; there is nothing to recover */
     }
   }
 
@@ -669,6 +722,12 @@ export class BrowserHub {
     }
     this.onChange();
     return tab.view.webContents.getURL();
+  }
+
+  /** `navigate` for assistant-driven callers. The omnibox keeps the unrestricted path. */
+  async assistantNavigate(url: string, tabId?: string): Promise<string> {
+    if (!isAssistantNavigable(url)) throw new Error(ASSISTANT_NAV_REFUSAL);
+    return this.navigate(url, tabId);
   }
 
   back(): void {
@@ -1559,7 +1618,9 @@ export class BrowserHub {
   }
 
   async searchWeb(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
-    const id = this.createTab(`https://www.google.com/search?hl=en&q=${encodeURIComponent(query)}`);
+    // The query is encoded into a fixed https URL, so no scheme can escape — routed through
+    // the assistant guard anyway so every tool-driven tab open goes through one door.
+    const id = this.assistantCreateTab(`https://www.google.com/search?hl=en&q=${encodeURIComponent(query)}`);
     const tab = this.requireTab(id);
     await waitUntil(() => !tab.view.webContents.isLoading(), 20000);
     await sleep(900);
@@ -1762,7 +1823,10 @@ export class BrowserHub {
   private attachListeners(tab: Tab): void {
     const wc = tab.view.webContents;
     wc.setWindowOpenHandler(({ url }) => {
-      this.createTab(url, { record: false });
+      // `createTab` runs in main, which is not subject to the web→file navigation block a
+      // renderer would hit, so a hostile page could otherwise `window.open` a local file into
+      // a tab the read tools can dump. Same policy as the assistant path.
+      if (isAssistantNavigable(url)) this.createTab(url, { record: false });
       return { action: "deny" };
     });
     wc.on("page-favicon-updated", (_e, icons) => {

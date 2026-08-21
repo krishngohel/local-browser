@@ -29,8 +29,22 @@ let manifestLoading = false;
 let toolsKey = "";
 let activityKey = "";
 
-export function initSettings(onState: (state: AppState) => void): void {
+/**
+ * The shell's overlay teardown, injected by `main.ts`. Passing it in rather than importing it
+ * keeps `settings.ts` free of a cycle back through `main.ts`. The default covers the strip
+ * release on its own, so the page is still correct before `initSettings` runs.
+ */
+let closeOverlays: () => void = () => {
+  releaseAll();
+  remeasureToasts();
+};
+
+export function initSettings(
+  onState: (state: AppState) => void,
+  onCloseOverlays?: () => void,
+): void {
   rerender = onState;
+  if (onCloseOverlays) closeOverlays = onCloseOverlays;
 
   document.getElementById("settings-back")!.addEventListener("click", () => void closeSettings());
 
@@ -655,10 +669,13 @@ export function hideSettings(): void {
 /**
  * Panels claim a strip of the page view. Nothing claims while settings is open, but a claim
  * made before it opened would otherwise be handed to the page on the way out.
+ *
+ * This runs the shell's full overlay teardown, not just the strip release: main swallows
+ * Escape while settings is open and pushes `close-settings` instead, so the palette's own
+ * Escape handler never fires and it would survive the page it was opened over.
  */
 function dropOverlays(): void {
-  releaseAll();
-  remeasureToasts();
+  closeOverlays();
 }
 
 /** Both nodes carry the class: <html> sizes the document, <body> drives the layout rules. */

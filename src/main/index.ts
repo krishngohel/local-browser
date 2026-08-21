@@ -41,6 +41,13 @@ import { DialogPolicies } from "./dialogs";
  * and several of them are read during module initialisation.
  */
 const TEST_MODE = process.env.ECHO_TEST === "1";
+/**
+ * Set when test mode was asked for without a throwaway profile. `app.exit()` should end the
+ * process on the spot, but module evaluation continuing past it would run `prepareTestProfile`
+ * against the real profile — so `whenReady` checks this flag and refuses rather than trusting
+ * the exit to have happened.
+ */
+let testModeRefused = false;
 if (TEST_MODE) {
   // Test mode rewrites the prefs and settings files and switches every tool group on. Doing
   // that to the real profile would hand a full 69-tool surface to whatever is connected, so
@@ -48,6 +55,7 @@ if (TEST_MODE) {
   const testUserData = process.env.ECHO_TEST_USERDATA;
   if (!testUserData) {
     console.error("ECHO_TEST=1 needs ECHO_TEST_USERDATA: refusing to run test mode against the real profile.");
+    testModeRefused = true;
     app.exit(3);
   } else {
     fs.mkdirSync(testUserData, { recursive: true });
@@ -643,6 +651,12 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(async () => {
+    // Fail closed: the exit above should already have ended the process, and if it somehow
+    // did not, nothing here may touch the real profile.
+    if (testModeRefused) {
+      app.exit(3);
+      return;
+    }
     // Test mode never puts a dialog on screen: an unattended run would hang on it. A busy
     // port is reported as exit code 3 instead.
     if (TEST_MODE) {
@@ -671,6 +685,10 @@ if (!gotLock) {
     // A scheduled replay must not fight a live recording or another replay, so a job that
     // arrives at a busy moment is reported as skipped and simply waits for its next slot.
     scheduler = new Scheduler(userDataDir(), async (id) => {
+      // Pause is the user's stop button for everything an assistant set in motion, and a
+      // schedule outlives the session that created it. It has to be checked here too: the
+      // per-tool pause check in `activity.wrap` never sees a replay the timer started.
+      if (activity.isPaused()) return { ok: false, message: "Skipped: Echo is paused by the user." };
       if (recorder.isRecording()) return { ok: false, message: "Skipped: a recording is in progress." };
       if (recorder.isPlaying()) return { ok: false, message: "Skipped: a recording is already playing." };
       try {

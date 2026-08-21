@@ -214,7 +214,7 @@ export function registerQa(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "network_log",
-    "Recent requests on this tab (method, url, status, type, ms, bytes), newest first.",
+    "Recent document and API requests on this tab (method, url, status, type, ms, bytes), newest first. Images, scripts, styles and fonts are not logged.",
     { filter: z.string().optional(), limit: z.number().int().min(1).max(200).optional() },
     async ({ filter, limit }) => {
       try {

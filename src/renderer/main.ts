@@ -292,7 +292,7 @@ async function openSettingsSection(section: string): Promise<void> {
 }
 
 if (window.lb) {
-  initSettings(render);
+  initSettings(render, closeOverlays);
   window.lb.onState(render);
   window.lb.onOpenSettings((section) => void openSettingsSection(section || "connections"));
   window.lb.onCloseSettings(() => hideSettings());

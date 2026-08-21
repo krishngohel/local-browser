@@ -257,7 +257,7 @@ Off by default.
 assert_visible / assert_url / assert_count     // PASS/FAIL, recorded in the active test run
 visual_baseline → visual_diff                  // named baseline, then changed percent + diff image
 perf_timing                                    // TTFB, DOMContentLoaded, load, LCP, CLS
-network_log                                    // recent requests, newest first, up to 200
+network_log                                    // recent document and API requests, newest first, up to 200
 schedule_recording / run_recording_steps       // replay on an interval, or play a slice
 ```
 
@@ -361,7 +361,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | Tool | What it does |
 | --- | --- |
 | `tabs_list` | List open browser tabs. |
-| `tabs_new` | Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with its own throwaway cookie jar and no history. |
+| `tabs_new` | Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with no history, on a throwaway cookie jar shared by incognito tabs and cleared when the last one closes. |
 | `tabs_close` | Close a tab by id. |
 | `tabs_select` | Focus a tab by id. |
 | `navigate` | Navigate the active tab (or a given tab) to a URL. Bare words are treated as a search. Recorded if recording is on. |
@@ -470,6 +470,6 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `visual_baseline` | Save a named screenshot baseline of the viewport. |
 | `visual_diff` | Compare the viewport to a named baseline; returns changed percent, pass/fail, and a diff image path. |
 | `perf_timing` | Navigation timing (TTFB, DOMContentLoaded, load) plus LCP and CLS if observed. |
-| `network_log` | Recent requests on this tab (method, url, status, type, ms, bytes), newest first. |
+| `network_log` | Recent document and API requests on this tab (method, url, status, type, ms, bytes), newest first. Images, scripts, styles and fonts are not logged. |
 | `schedule_recording` | Replay a saved recording on an interval while Echo is open. action add/list/cancel. |
 | `run_recording_steps` | Play a slice of a saved recording (from step index, optional to). |

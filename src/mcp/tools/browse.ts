@@ -19,11 +19,11 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "tabs_new",
-    "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with its own throwaway cookie jar and no history.",
+    "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with no history, on a throwaway cookie jar shared by incognito tabs and cleared when the last one closes.",
     { url: z.string().optional(), incognito: z.boolean().optional() },
     async ({ url, incognito }) => {
       try {
-        const id = hub.createTab(url || undefined, { incognito: Boolean(incognito) });
+        const id = hub.assistantCreateTab(url || undefined, { incognito: Boolean(incognito) });
         return text(`Opened ${incognito ? "incognito " : ""}tab ${id}`);
       } catch (e) {
         return err(e);
@@ -57,7 +57,7 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
     { url: z.string(), tabId: z.string().optional() },
     async ({ url, tabId }) => {
       try {
-        const finalUrl = await hub.navigate(url, tabId);
+        const finalUrl = await hub.assistantNavigate(url, tabId);
         return text(`Navigated to ${finalUrl}`);
       } catch (e) {
         return err(e);

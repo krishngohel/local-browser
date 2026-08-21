@@ -922,6 +922,12 @@ body.compact .omnibox {
   border-color: transparent;
   color: var(--muted);
   margin-left: auto;
+  padding: 0 10px;
+}
+
+/* Only the first ghost is pushed right; the rest sit beside it as one group. */
+.pop-btn.ghost + .pop-btn.ghost {
+  margin-left: 0;
 }
 
 /* --------------------------------------------------------- tab preview */

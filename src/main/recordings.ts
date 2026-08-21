@@ -216,12 +216,12 @@ export class Recorder {
   private async run(hub: BrowserHub, action: RecordedAction): Promise<void> {
     switch (action.type) {
       case "navigate":
-        await hub.navigate(action.url);
+        await hub.assistantNavigate(action.url);
         await hub.waitFor({ timeoutMs: 15000, record: false });
         await sleep(350);
         return;
       case "newTab":
-        hub.createTab(action.url);
+        hub.assistantCreateTab(action.url);
         await hub.waitFor({ timeoutMs: 15000, record: false });
         await sleep(350);
         return;
