@@ -11,14 +11,21 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
     return text(JSON.stringify(hub.listTabs(), null, 2));
   });
 
-  define(server, deps, "tabs_new", "Open a new tab. Optional URL, otherwise the search homepage.", { url: z.string().optional() }, async ({ url }) => {
-    try {
-      const id = hub.createTab(url || undefined);
-      return text(`Opened tab ${id}`);
-    } catch (e) {
-      return err(e);
-    }
-  });
+  define(
+    server,
+    deps,
+    "tabs_new",
+    "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with its own throwaway cookie jar and no history.",
+    { url: z.string().optional(), incognito: z.boolean().optional() },
+    async ({ url, incognito }) => {
+      try {
+        const id = hub.createTab(url || undefined, { incognito: Boolean(incognito) });
+        return text(`Opened ${incognito ? "incognito " : ""}tab ${id}`);
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
 
   define(server, deps, "tabs_close", "Close a tab by id.", { id: z.string() }, async ({ id }) => {
     try {

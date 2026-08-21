@@ -206,7 +206,7 @@ If the photo shows captcha, consent, login, or 2FA:
 | Tool | What it does | You get |
 | --- | --- | --- |
 | `tabs_list` | List tabs | id, title, url |
-| `tabs_new` | New tab, optional url | tab id |
+| `tabs_new` | New tab, optional url + incognito | tab id |
 | `tabs_close` | Close by id | — |
 | `tabs_select` | Focus by id | — |
 | `navigate` | URL or search words | final URL |

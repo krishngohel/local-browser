@@ -40,7 +40,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
 
   // Browse and click
   { name: "tabs_list", group: "toolsBrowse", description: "List open browser tabs." },
-  { name: "tabs_new", group: "toolsBrowse", description: "Open a new tab. Optional URL, otherwise the search homepage." },
+  { name: "tabs_new", group: "toolsBrowse", description: "Open a new tab. Optional URL, otherwise the search homepage. Set incognito for a tab with its own throwaway cookie jar and no history." },
   { name: "tabs_close", group: "toolsBrowse", description: "Close a tab by id." },
   { name: "tabs_select", group: "toolsBrowse", description: "Focus a tab by id." },
   {
@@ -185,7 +185,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "dialog",
     group: "toolsInteract",
-    description: "Set how alerts/confirms/prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
+    description: "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
   },
   { name: "frames", group: "toolsInteract", description: "List iframes on the page." },
   {

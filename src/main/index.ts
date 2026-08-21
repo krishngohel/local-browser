@@ -33,6 +33,19 @@ import { Bookmarks } from "./bookmarks";
 import { Downloads } from "./downloads";
 import { DialogPolicies } from "./dialogs";
 
+/**
+ * End-to-end test mode (`scripts/test-tools.mjs`).
+ *
+ * The profile is redirected before anything else runs, because `userDataDir()` is what every
+ * store — token, port file, prefs, settings, recordings, baselines — resolves its path from,
+ * and several of them are read during module initialisation.
+ */
+const TEST_MODE = process.env.ECHO_TEST === "1";
+if (TEST_MODE && process.env.ECHO_TEST_USERDATA) {
+  fs.mkdirSync(process.env.ECHO_TEST_USERDATA, { recursive: true });
+  app.setPath("userData", process.env.ECHO_TEST_USERDATA);
+}
+
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
 app.commandLine.appendSwitch("remote-debugging-port", String(CDP_PORT));
@@ -460,6 +473,15 @@ function registerIpc(): void {
     recorder.rename(id, name);
     broadcast();
   });
+  // Synchronous by necessity: the page preload is inside window.alert/confirm/prompt and
+  // cannot return to the page until it knows the tab's policy.
+  ipcMain.on("echo:dialog", (event, payload: { type?: string; message?: string }) => {
+    event.returnValue = hub.answerDialog(
+      event.sender.id,
+      String(payload?.type ?? "dialog"),
+      String(payload?.message ?? ""),
+    );
+  });
   ipcMain.on("echo:page-event", (event, payload: RecordedAction) => {
     if (event.sender === mainWindow?.webContents) return;
     if (!recorder.isRecording() || recorder.isIgnoring()) return;
@@ -506,6 +528,33 @@ function warnAlreadyRunning(): void {
   });
 }
 
+/**
+ * Switches every tool group on and enables `evaluate`, so the end-to-end test sees the full
+ * 69-tool surface. Written before the MCP server starts, because a session registers its
+ * tools from the snapshot of the prefs taken at that moment.
+ */
+function prepareTestProfile(): void {
+  setTransferPrefs({
+    snapshotPhoto: true,
+    screenshotPhoto: true,
+    watchFrames: true,
+    readableText: true,
+    skillTreeOnConnect: true,
+    toolsBrowse: true,
+    toolsSee: true,
+    toolsSearch: true,
+    toolsDebug: true,
+    toolsTest: true,
+    toolsRecord: true,
+    toolsRead: true,
+    toolsInteract: true,
+    toolsState: true,
+    toolsQa: true,
+  });
+  const home = process.env.ECHO_TEST_HOME;
+  setSettings(home ? { evaluateEnabled: true, homeUrl: home } : { evaluateEnabled: true });
+}
+
 function installAppMenu(): void {
   if (process.platform !== "darwin") {
     Menu.setApplicationMenu(null);
@@ -543,7 +592,11 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(async () => {
-    if (await echoAlreadyRunning()) {
+    // Test mode never puts a dialog on screen: an unattended run would hang on it. A busy
+    // port is reported as exit code 3 instead.
+    if (TEST_MODE) {
+      prepareTestProfile();
+    } else if (await echoAlreadyRunning()) {
       warnAlreadyRunning();
       quitRequested = true;
       app.quit();
@@ -604,6 +657,14 @@ if (!gotLock) {
     } catch (error) {
       mcpListening = false;
       broadcast();
+      if (TEST_MODE) {
+        console.error(
+          `ECHO_TEST: MCP server did not start: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        quitRequested = true;
+        app.exit(3);
+        return;
+      }
       if (isAddrInUse(error) || (await echoAlreadyRunning())) {
         warnAlreadyRunning();
         quitRequested = true;

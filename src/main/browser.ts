@@ -132,6 +132,15 @@ const NETWORK_LOG_CAP = 200;
 const PENDING_REQUEST_CAP = 600;
 const THUMB_TTL_MS = 10_000;
 const THUMB_CAPTURE_TIMEOUT_MS = 2_000;
+/**
+ * How long to wait for Playwright's view of the active tab to catch up with Electron's.
+ *
+ * `navigate` resolves on Electron's load event, which happens in the browser process; the
+ * matching CDP event still has to reach the Playwright client before `page.url()` changes.
+ * Without this wait, a Playwright-only tool (`drag`, `upload_file`, `dialog`) called right
+ * after a navigation reports "Playwright not attached" for a few dozen milliseconds.
+ */
+const PW_PAGE_WAIT_MS = 2_000;
 
 export class BrowserHub {
   private window: BrowserWindow | null = null;
@@ -1714,12 +1723,22 @@ export class BrowserHub {
     if (!this.pw) return null;
     const tab = this.active();
     if (!tab) return null;
-    const url = this.activeUrl();
-    if (!url || url.startsWith("file:")) return null;
-    const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
-    const page = pages.find((p) => p.url() === url) || null;
-    if (page) this.hookDialogs(tab.id, page);
-    return page;
+    // The URL is re-read each round so a navigation that lands mid-wait converges rather
+    // than leaving the loop chasing the address the tab has already left.
+    const deadline = Date.now() + PW_PAGE_WAIT_MS;
+    for (;;) {
+      const url = this.activeUrl();
+      // Playwright has no target for a file: page, so there is nothing to wait for.
+      if (!url || url.startsWith("file:")) return null;
+      const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
+      const page = pages.find((p) => safePageUrl(p) === url) || null;
+      if (page) {
+        this.hookDialogs(tab.id, page);
+        return page;
+      }
+      if (Date.now() >= deadline) return null;
+      await sleep(100);
+    }
   }
 
   /**
@@ -1759,9 +1778,16 @@ export class BrowserHub {
             at: new Date().toISOString(),
           });
         }
-        const done = policy.action === "accept" ? d.accept(policy.promptText) : d.dismiss();
+        // `promptText` is only legal on a prompt dialog: CDP rejects the whole
+        // `Page.handleJavaScriptDialog` call when it is sent for an alert or a confirm, and
+        // Electron's own dialog manager then answers the dialog with Cancel — so passing it
+        // unconditionally turned every "accept" into a dismiss.
+        const done =
+          policy.action === "accept"
+            ? d.accept(type === "prompt" ? policy.promptText : undefined)
+            : d.dismiss();
         void Promise.resolve(done).catch(() => {
-          /* the page navigated away mid-dialog */
+          /* Electron answered the dialog first, or the page navigated away mid-dialog */
         });
       });
     } catch {
@@ -1787,13 +1813,32 @@ export class BrowserHub {
     return null;
   }
 
-  /** True once a Playwright page for the active tab exists (and so dialogs are intercepted). */
-  async dialogsAttached(): Promise<boolean> {
-    try {
-      return Boolean(await this.playwrightPage());
-    } catch {
-      return false;
+  /**
+   * Answers a JavaScript dialog for the tab that raised it, and records it for the `dialog`
+   * tool. Called synchronously from the page preload's alert/confirm/prompt shim.
+   *
+   * This, not the Playwright listener above, is what makes an "accept" policy work. Electron
+   * answers every JS dialog raised inside a `BrowserView` with Cancel within milliseconds —
+   * long before a CDP `Page.handleJavaScriptDialog` round trip can land — and it refuses
+   * `window.prompt` outright. The listener stays for the dialogs the page shim cannot reach,
+   * such as `beforeunload`.
+   */
+  answerDialog(
+    webContentsId: number,
+    type: string,
+    message: string,
+  ): { accept: boolean; promptText: string | null } {
+    const tab = this.tabForWebContents(webContentsId);
+    const policy = tab ? this.dialogs.get(tab.id) : { action: "dismiss" as const, promptText: undefined };
+    if (tab) {
+      this.dialogs.note(tab.id, {
+        type,
+        message: String(message ?? "").slice(0, 500),
+        handledAs: policy.action,
+        at: new Date().toISOString(),
+      });
     }
+    return { accept: policy.action === "accept", promptText: policy.promptText ?? null };
   }
 
   setDialogPolicy(policy: DialogPolicy): void {
@@ -1947,6 +1992,15 @@ export function normalizeUrl(input: string): string {
     return `https://www.google.com/search?hl=en&q=${encodeURIComponent(trimmed)}`;
   }
   return `https://${trimmed}`;
+}
+
+/** `url()` throws on a closed Playwright page, which must not break the search for a live one. */
+function safePageUrl(page: PwPage): string {
+  try {
+    return page.url();
+  } catch {
+    return "";
+  }
 }
 
 /** `getURL()` throws on a destroyed webContents, and a closing tab must not break dialogs. */

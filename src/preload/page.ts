@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 const INTERACTIVE =
   'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
@@ -168,4 +168,63 @@ try {
   });
 } catch {
   /* already exposed, or context isolation is off; perf_timing falls back to nulls */
+}
+
+// --- JavaScript dialogs -----------------------------------------------------------------
+//
+// alert/confirm/prompt are answered here, in the page, rather than through Playwright.
+// Electron cancels every JS dialog raised inside a BrowserView within a few milliseconds and
+// does not implement `window.prompt` at all, so a CDP round trip can never win the race.
+// Overriding the three functions in the main world makes the tab's `dialog` policy the thing
+// that decides, and lets the main process record what the page asked.
+//
+// `sendSync` is deliberate: alert/confirm/prompt are synchronous by contract, so the answer
+// has to be in hand before the call returns.
+
+type DialogAnswer = { accept: boolean; promptText: string | null };
+
+function answerDialog(type: string, message: string): DialogAnswer {
+  try {
+    const reply = ipcRenderer.sendSync("echo:dialog", {
+      type,
+      message: String(message ?? "").slice(0, 500),
+    }) as DialogAnswer | undefined;
+    if (reply && typeof reply === "object" && typeof reply.accept === "boolean") return reply;
+  } catch {
+    /* the main process is gone or has no handler; fall through to the safe answer */
+  }
+  return { accept: false, promptText: null };
+}
+
+/**
+ * Installed in the main world, where the page's own scripts see it. Written as source rather
+ * than a function because the preload runs in the isolated world: only `webFrame` can reach
+ * across, and it takes JavaScript text.
+ */
+const DIALOG_SHIM = `(() => {
+  const bridge = window.__echoDialog;
+  if (!bridge || window.__echoDialogInstalled) return;
+  window.__echoDialogInstalled = true;
+  const ask = (type, message) => {
+    try {
+      return bridge.answer(type, message == null ? '' : String(message));
+    } catch (e) {
+      return { accept: false, promptText: null };
+    }
+  };
+  window.alert = function alert(message) { ask('alert', message); };
+  window.confirm = function confirm(message) { return ask('confirm', message).accept === true; };
+  window.prompt = function prompt(message, defaultValue) {
+    const answer = ask('prompt', message);
+    if (!answer.accept) return null;
+    if (answer.promptText != null) return String(answer.promptText);
+    return defaultValue == null ? '' : String(defaultValue);
+  };
+})();`;
+
+try {
+  contextBridge.exposeInMainWorld("__echoDialog", { answer: answerDialog });
+  void webFrame.executeJavaScript(DIALOG_SHIM);
+} catch {
+  /* without the bridge the page keeps Electron's own behaviour: every dialog is cancelled */
 }

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Drag fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    #src, #dst { width: 180px; height: 90px; line-height: 90px; text-align: center;
+                 border: 2px solid #5f6368; margin: 12px 0; user-select: none; }
+    #src { background: #e8f0fe; cursor: grab; }
+    #dst { background: #fce8e6; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Drag fixture</h1>
+  <div id="src" role="button" tabindex="0" draggable="true">source</div>
+  <div id="dst" role="button" tabindex="0">target</div>
+  <div id="out">idle</div>
+  <script>
+    var out = document.getElementById('out');
+    var src = document.getElementById('src');
+    var dst = document.getElementById('dst');
+    src.addEventListener('dragstart', function (e) {
+      e.dataTransfer.setData('text/plain', 'source');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    dst.addEventListener('dragover', function (e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; });
+    dst.addEventListener('dragenter', function (e) { e.preventDefault(); });
+    dst.addEventListener('drop', function (e) { e.preventDefault(); out.textContent = 'dropped'; });
+  </script>
+</body>
+</html>

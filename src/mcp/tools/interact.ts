@@ -119,20 +119,16 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "dialog",
-    "Set how alerts/confirms/prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
+    "Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen.",
     { action: z.enum(["accept", "dismiss"]), promptText: z.string().optional() },
     async ({ action, promptText }) => {
       try {
         hub.setDialogPolicy({ action, promptText });
-        // Resolving the page is also what installs the dialog listener, so ask for it now
-        // rather than leaving the policy inert until the next Playwright-backed tool call.
-        const attached = await hub.dialogsAttached();
-        const note = attached ? "" : " (policy set; applies when Playwright attached)";
         const last = hub.lastDialog();
         const seen = last
           ? `Last dialog: ${last.type} "${last.message}" — ${last.handledAs}ed at ${last.at}`
           : "No dialog seen yet";
-        return text(`Dialogs will be ${action}ed${promptText ? ` with "${promptText}"` : ""}${note}. ${seen}`);
+        return text(`Dialogs will be ${action}ed${promptText ? ` with "${promptText}"` : ""}. ${seen}`);
       } catch (e) {
         return err(e);
       }

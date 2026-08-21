@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Perf fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    img { display: block; margin: 12px 0; image-rendering: pixelated; }
+    #late { background: #fff3cd; padding: 10px; margin: 12px 0; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Perf fixture</h1>
+  <img src="dot.png" width="240" height="120" alt="a small image scaled up">
+  <p>A block is inserted above this paragraph shortly after load, which shifts the layout.</p>
+  <p><a href="index.html">Back to the fixture index</a></p>
+  <div id="out">idle</div>
+  <script>
+    setTimeout(function () {
+      var block = document.createElement('div');
+      block.id = 'late';
+      block.textContent = 'This block arrived late and pushed the page down.';
+      document.body.insertBefore(block, document.body.firstChild);
+      document.getElementById('out').textContent = 'settled';
+    }, 250);
+  </script>
+</body>
+</html>

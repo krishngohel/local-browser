@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Form fixture</title>
+  <meta name="description" content="A form for the Echo tool tests.">
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Form fixture</h1>
+  <form id="demo" name="demo" method="get" action="forms.html">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" placeholder="Your name">
+
+    <label for="color">Color</label>
+    <select id="color" name="color">
+      <option value="red">Red</option>
+      <option value="green">Green</option>
+      <option value="blue">Blue</option>
+    </select>
+
+    <label for="agree">Agree</label>
+    <input type="checkbox" id="agree" name="agree">
+
+    <label for="file">File</label>
+    <input type="file" id="file" name="file">
+
+    <p><button type="submit" id="send">Send form</button></p>
+  </form>
+  <div id="out">idle</div>
+  <script>
+    var out = document.getElementById('out');
+    document.getElementById('demo').addEventListener('submit', function (e) {
+      e.preventDefault();
+      out.textContent = 'submitted: ' + document.getElementById('name').value +
+        ' / ' + document.getElementById('color').value;
+    });
+  </script>
+</body>
+</html>
