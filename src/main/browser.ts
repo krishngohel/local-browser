@@ -1,10 +1,19 @@
-import { BrowserView, BrowserWindow, session, nativeImage, type Session } from "electron";
+import { BrowserView, BrowserWindow, net, session, nativeImage, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { pwBridge, type PwBrowser, type PwCdpSession, type PwPage, type ScreencastFrame } from "./pw-bridge";
 import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
 import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
+import {
+  FORMS_SCRIPT,
+  PAGE_INFO_SCRIPT,
+  getTextScript,
+  htmlScript,
+  linksScript,
+  tablesScript,
+} from "./page-scripts";
+import { extractPdfText, pdfPageCount } from "./pdf-text";
 import type { Recorder } from "./recordings";
 import type { Downloads } from "./downloads";
 import type { History } from "./history";
@@ -15,10 +24,46 @@ export type SnapshotItem = {
   tag: string;
   role: string;
   name: string;
+  /** Associated `<label>`, aria-label, or placeholder — what `find({ label })` matches. */
+  label?: string;
   href?: string;
   inputType?: string;
   value?: string;
   selectors?: string[];
+};
+
+export type PageLink = { text: string; href: string };
+
+export type PageTable = {
+  index: number;
+  caption: string;
+  headers: string[];
+  rows: string[][];
+  totalRows: number;
+};
+
+export type FormField = { name: string; type: string; value: string; label: string; ref?: string };
+
+export type PageForm = {
+  index: number;
+  name: string;
+  action: string;
+  method: string;
+  fields: FormField[];
+};
+
+export type PageInfo = {
+  title: string;
+  url: string;
+  description: string;
+  lang: string;
+  canonical: string;
+  h1: string[];
+  linkCount: number;
+  imageCount: number;
+  formCount: number;
+  scripts: number;
+  cookiesCount: number;
 };
 
 type Tab = {
@@ -29,6 +74,8 @@ type Tab = {
   favicon: string | null;
   incognito: boolean;
   partition: string;
+  /** Content-Type of the last main-frame response, for spotting PDFs. */
+  contentType: string | null;
 };
 
 const HOME_URL = "https://www.google.com/";
@@ -52,6 +99,7 @@ export class BrowserHub {
   private homeUrl = HOME_URL;
   private chromeHeight = CHROME_HEIGHT;
   private thumbs = new Map<string, { at: number; data: string }>();
+  private headerSessions = new WeakSet<Session>();
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
@@ -131,10 +179,42 @@ export class BrowserHub {
   /** Chrome UA plus the shared download path, for the persistent and incognito sessions alike. */
   private prepareSession(ses: Session): void {
     applyChromeSession(ses);
+    this.trackContentType(ses);
     ses.on("will-download", (_event, item) => {
       const dest = path.join(downloadsDir(), item.getFilename());
       item.setSavePath(dest);
       this.downloads?.track(item, dest);
+    });
+  }
+
+  /**
+   * Remembers the Content-Type of each main-frame response so `pdfText` knows whether the
+   * tab is showing a real PDF or an HTML page it has to print.
+   *
+   * A session allows only one `onHeadersReceived` listener, so this is registered once per
+   * session and finds the tab by `webContentsId` rather than being wired up per tab.
+   */
+  private trackContentType(ses: Session): void {
+    if (this.headerSessions.has(ses)) return;
+    this.headerSessions.add(ses);
+    ses.webRequest.onHeadersReceived((details, callback) => {
+      try {
+        if (details.resourceType === "mainFrame") {
+          const headers = details.responseHeaders ?? {};
+          const key = Object.keys(headers).find((k) => k.toLowerCase() === "content-type");
+          const value = key ? String(headers[key]?.[0] ?? "") : "";
+          const wcId = (details as { webContentsId?: number }).webContentsId;
+          for (const tab of this.tabs.values()) {
+            if (tab.view.webContents.id === wcId) {
+              tab.contentType = value;
+              break;
+            }
+          }
+        }
+      } catch {
+        /* header shapes vary; never block the response over bookkeeping */
+      }
+      callback({});
     });
   }
 
@@ -169,7 +249,16 @@ export class BrowserHub {
         preload: path.join(__dirname, "..", "preload", "page.js"),
       },
     });
-    const tab: Tab = { id, view, console: [], networkFailures: [], favicon: null, incognito, partition };
+    const tab: Tab = {
+      id,
+      view,
+      console: [],
+      networkFailures: [],
+      favicon: null,
+      incognito,
+      partition,
+      contentType: null,
+    };
     installChromePageShim(view.webContents);
     this.attachListeners(tab);
     this.tabs.set(id, tab);
@@ -519,6 +608,7 @@ export class BrowserHub {
           tag: el.tagName.toLowerCase(),
           role: el.getAttribute('role') || el.tagName.toLowerCase(),
           name: (el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.innerText || el.getAttribute('value') || el.getAttribute('href') || '').trim().slice(0, 120),
+          label: (((el.labels && el.labels[0] && el.labels[0].innerText) || el.getAttribute('aria-label') || el.getAttribute('placeholder') || '').replace(/\\s+/g, ' ').trim().slice(0, 120)) || undefined,
           href: el.href || undefined,
           inputType: el.getAttribute('type') || undefined,
           value: el.value || undefined,
@@ -878,6 +968,112 @@ export class BrowserHub {
       return { title, url, markdown: lines.join('\\n\\n').slice(0, 40000) };
     })()`)) as { title: string; url: string; markdown: string };
     return data;
+  }
+
+  /** Visible text of one snapshot ref, or of the whole body. */
+  async getText(ref?: string, maxChars = 40_000): Promise<string> {
+    const wc = this.requireActive().view.webContents;
+    const cap = Math.max(1, Math.min(maxChars, 40_000));
+    const value = (await wc.executeJavaScript(getTextScript(ref ?? null, cap))) as string | null;
+    if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+    return value;
+  }
+
+  /**
+   * Interactive elements matching any of text/role/label. Takes a fresh snapshot first, so
+   * the refs it returns are the ones `click`/`type`/`fill` will resolve.
+   */
+  async find(q: { text?: string; role?: string; label?: string; limit?: number }): Promise<SnapshotItem[]> {
+    const items = await this.snapshot();
+    const wanted = {
+      text: q.text?.trim().toLowerCase() ?? "",
+      role: q.role?.trim().toLowerCase() ?? "",
+      label: q.label?.trim().toLowerCase() ?? "",
+    };
+    const matches = items.filter((item) => {
+      if (wanted.text && !(item.name ?? "").toLowerCase().includes(wanted.text)) return false;
+      if (wanted.role) {
+        const role = (item.role ?? "").toLowerCase();
+        const tag = (item.tag ?? "").toLowerCase();
+        if (role !== wanted.role && tag !== wanted.role) return false;
+      }
+      if (wanted.label && !(item.label ?? "").toLowerCase().includes(wanted.label)) return false;
+      return true;
+    });
+    return matches.slice(0, Math.max(1, q.limit ?? 50));
+  }
+
+  async links(filter?: string, limit = 300): Promise<PageLink[]> {
+    const wc = this.requireActive().view.webContents;
+    const cap = Math.max(1, Math.min(limit, 300));
+    return (await wc.executeJavaScript(linksScript(filter?.trim() || null, cap))) as PageLink[];
+  }
+
+  async tables(maxRows = 30): Promise<PageTable[]> {
+    const wc = this.requireActive().view.webContents;
+    return (await wc.executeJavaScript(tablesScript(Math.max(1, maxRows)))) as PageTable[];
+  }
+
+  /** Snapshots first so every interactive field carries a ref usable with `fill`. */
+  async forms(): Promise<PageForm[]> {
+    await this.snapshot();
+    const wc = this.requireActive().view.webContents;
+    return (await wc.executeJavaScript(FORMS_SCRIPT)) as PageForm[];
+  }
+
+  async pageInfo(): Promise<PageInfo> {
+    const tab = this.requireActive();
+    const info = (await tab.view.webContents.executeJavaScript(PAGE_INFO_SCRIPT)) as Omit<
+      PageInfo,
+      "cookiesCount"
+    >;
+    let cookiesCount = 0;
+    try {
+      const url = info.url || tab.view.webContents.getURL();
+      if (/^https?:/i.test(url)) {
+        cookiesCount = (await tab.view.webContents.session.cookies.get({ url })).length;
+      }
+    } catch {
+      cookiesCount = 0;
+    }
+    return { ...info, cookiesCount };
+  }
+
+  async html(ref?: string, maxChars = 50_000): Promise<{ html: string; truncated: boolean; total: number }> {
+    const wc = this.requireActive().view.webContents;
+    const value = (await wc.executeJavaScript(htmlScript(ref ?? null))) as string | null;
+    if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+    const cap = Math.max(1, Math.min(maxChars, 50_000));
+    return { html: value.slice(0, cap), truncated: value.length > cap, total: value.length };
+  }
+
+  /**
+   * Text of the PDF in the tab, or of the page printed to PDF. A real PDF is refetched with
+   * `net.fetch` because the built-in viewer's DOM holds no text.
+   */
+  async pdfText(): Promise<{ title: string; text: string; pages?: number }> {
+    const tab = this.requireActive();
+    const wc = tab.view.webContents;
+    const url = wc.getURL();
+    const isPdf =
+      /\.pdf(\?|#|$)/i.test(url) || (tab.contentType ?? "").toLowerCase().includes("application/pdf");
+    let buf: Buffer;
+    if (isPdf) {
+      // Fetched through the tab's own session so cookies and the Chrome UA apply — some
+      // hosts serve a 403 to anything else.
+      const fetcher = wc.session.fetch ? wc.session.fetch.bind(wc.session) : net.fetch;
+      const response = await fetcher(url);
+      if (!response.ok) throw new Error(`Could not download the PDF (HTTP ${response.status}).`);
+      buf = Buffer.from(await response.arrayBuffer());
+    } else {
+      buf = await wc.printToPDF({});
+    }
+    const text = extractPdfText(buf);
+    if (text.trim().length < 20) {
+      throw new Error("No extractable text (scanned PDF or no text layer).");
+    }
+    const pages = pdfPageCount(buf);
+    return { title: wc.getTitle() || url, text, pages: pages || undefined };
   }
 
   async searchWeb(query: string): Promise<{ title: string; url: string; snippet: string }[]> {

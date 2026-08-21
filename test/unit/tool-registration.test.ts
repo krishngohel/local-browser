@@ -8,7 +8,7 @@ import type { ToolDeps } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
 import type { TransferPrefs } from "../../src/shared/types";
 
-/** Groups whose tools exist today. Later tasks add: toolsRead, toolsInteract, toolsState, toolsQa. */
+/** Groups whose tools exist today. Later tasks add: toolsInteract, toolsState, toolsQa. */
 const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "always",
   "toolsBrowse",
@@ -17,6 +17,7 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
   "toolsDebug",
   "toolsTest",
   "toolsRecord",
+  "toolsRead",
 ];
 
 type Registered = { name: string; description: string };
