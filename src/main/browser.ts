@@ -1638,6 +1638,110 @@ export class BrowserHub {
     return this.dialogs.last(this.requireActive().id);
   }
 
+  // ---- Sessions and state --------------------------------------------------
+
+  /**
+   * Cookies and storage belong to the *active tab's* session, so an incognito tab reads and
+   * writes its own jar rather than the persistent one.
+   */
+  private activeSession(): Session {
+    return this.requireActive().view.webContents.session;
+  }
+
+  /** Cookie work is relative to a page unless the caller names a URL. */
+  private requireCookieContext(url?: string): void {
+    if (url) return;
+    if (!this.activeUrl()) throw new Error("Open a page first or pass url.");
+  }
+
+  /** No url lists every cookie in the session; a url narrows it to that page. */
+  async cookiesGet(url?: string): Promise<Electron.Cookie[]> {
+    this.requireCookieContext(url);
+    return this.activeSession().cookies.get(url ? { url } : {});
+  }
+
+  async cookiesSet(cookie: {
+    name: string;
+    value: string;
+    url: string;
+    expiresDays?: number;
+    httpOnly?: boolean;
+    secure?: boolean;
+  }): Promise<void> {
+    await this.activeSession().cookies.set({
+      url: cookie.url,
+      name: cookie.name,
+      value: cookie.value,
+      httpOnly: cookie.httpOnly,
+      secure: cookie.secure,
+      expirationDate: cookie.expiresDays ? Date.now() / 1000 + cookie.expiresDays * 86400 : undefined,
+    });
+  }
+
+  /** Returns how many cookies were removed, or null when the whole jar was cleared. */
+  async cookiesClear(url?: string): Promise<number | null> {
+    this.requireCookieContext(url);
+    const ses = this.activeSession();
+    if (!url) {
+      await ses.clearStorageData({ storages: ["cookies"] });
+      return null;
+    }
+    const cookies = await ses.cookies.get({ url });
+    let removed = 0;
+    for (const cookie of cookies) {
+      // `remove` wants a URL the cookie would be sent to, which the record itself describes.
+      const host = (cookie.domain || "").replace(/^\./, "");
+      if (!host) continue;
+      const cookieUrl = `http${cookie.secure ? "s" : ""}://${host}${cookie.path || "/"}`;
+      try {
+        await ses.cookies.remove(cookieUrl, cookie.name);
+        removed++;
+      } catch {
+        /* a cookie that will not resolve to a URL is left alone rather than failing the call */
+      }
+    }
+    return removed;
+  }
+
+  /** JSON for one key, or an object of every key. Runs in the selected frame. */
+  async storageGet(kind: "local" | "session", key?: string, maxChars = 40_000): Promise<string> {
+    const store = kind === "local" ? "localStorage" : "sessionStorage";
+    const read = key
+      ? `s.getItem(${JSON.stringify(key)})`
+      : `Object.fromEntries(Object.keys(s).map((k) => [k, s.getItem(k)]))`;
+    const raw = String(await this.exec(`(() => { const s = window.${store}; return JSON.stringify(${read}); })()`));
+    if (raw.length <= maxChars) return raw;
+    return `${raw.slice(0, maxChars)}\n[truncated at ${maxChars} chars]`;
+  }
+
+  /** A null value deletes the key. */
+  async storageSet(kind: "local" | "session", key: string, value: string | null): Promise<void> {
+    const store = kind === "local" ? "localStorage" : "sessionStorage";
+    const call =
+      value === null
+        ? `removeItem(${JSON.stringify(key)})`
+        : `setItem(${JSON.stringify(key)}, ${JSON.stringify(value)})`;
+    await this.exec(`(() => { window.${store}.${call}; return true; })()`);
+  }
+
+  /** No origin wipes the whole session (cookies, storage, caches). */
+  async clearSiteData(origin?: string): Promise<void> {
+    const ses = this.activeSession();
+    await ses.clearStorageData(origin ? { origin } : {});
+    await ses.clearCache();
+  }
+
+  /** Title of the active tab, for bookmarking the current page. */
+  activeTitle(): string {
+    const wc = this.active()?.view.webContents;
+    if (!wc) return "";
+    try {
+      return wc.getTitle() || "";
+    } catch {
+      return "";
+    }
+  }
+
   /**
    * The Playwright page plus the locator root for the selected frame. Returns null when
    * Playwright is not attached, or when a frame is selected that Playwright cannot match —
