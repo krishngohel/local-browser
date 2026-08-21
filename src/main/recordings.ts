@@ -179,6 +179,12 @@ export class Recorder {
     const total = rec.actions.length;
     const start = Number.isInteger(from) ? from : NaN;
     const end = to === undefined ? total : Number.isInteger(to) ? to : NaN;
+    // Playing a recording with no steps at all is a no-op, not a failure — that is what
+    // `play()` has always answered, and the Play button and scheduler both rely on it. An
+    // explicit range against an empty recording is still a mistake worth reporting.
+    if (total === 0 && start === 0 && to === undefined) {
+      return { ok: true, message: `Played “${rec.name}” (0 steps)` };
+    }
     if (!(start >= 0) || start >= total) {
       throw new Error(`“${rec.name}” has ${total} step(s); from ${from} is out of range.`);
     }
