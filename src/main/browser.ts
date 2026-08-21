@@ -1,6 +1,7 @@
 import { BrowserView, BrowserWindow, net, session, nativeImage, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { pwBridge, type PwBrowser, type PwCdpSession, type PwPage, type ScreencastFrame } from "./pw-bridge";
 import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
@@ -197,7 +198,10 @@ export class BrowserHub {
   private trackContentType(ses: Session): void {
     if (this.headerSessions.has(ses)) return;
     this.headerSessions.add(ses);
-    ses.webRequest.onHeadersReceived((details, callback) => {
+    // Filtered to main-frame documents so images, scripts, and XHR do not round-trip
+    // through the main process on every response.
+    const filter = { urls: ["*://*/*"], types: ["mainFrame" as const] };
+    ses.webRequest.onHeadersReceived(filter, (details, callback) => {
       try {
         if (details.resourceType === "mainFrame") {
           const headers = details.responseHeaders ?? {};
@@ -980,8 +984,9 @@ export class BrowserHub {
   }
 
   /**
-   * Interactive elements matching any of text/role/label. Takes a fresh snapshot first, so
-   * the refs it returns are the ones `click`/`type`/`fill` will resolve.
+   * Interactive elements matching every criterion given — text, role, and label are ANDed,
+   * and an omitted one is simply not tested. Takes a fresh snapshot first, so the refs it
+   * returns are the ones `click`/`type`/`fill` will resolve.
    */
   async find(q: { text?: string; role?: string; label?: string; limit?: number }): Promise<SnapshotItem[]> {
     const items = await this.snapshot();
@@ -1041,10 +1046,16 @@ export class BrowserHub {
 
   async html(ref?: string, maxChars = 50_000): Promise<{ html: string; truncated: boolean; total: number }> {
     const wc = this.requireActive().view.webContents;
-    const value = (await wc.executeJavaScript(htmlScript(ref ?? null))) as string | null;
-    if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
     const cap = Math.max(1, Math.min(maxChars, 50_000));
-    return { html: value.slice(0, cap), truncated: value.length > cap, total: value.length };
+    // Sliced in the page: a large DOM serializes to megabytes, and all but `cap` of it would
+    // cross the IPC boundary only to be thrown away here.
+    const value = (await wc.executeJavaScript(htmlScript(ref ?? null, cap))) as {
+      html: string;
+      truncated: boolean;
+      total: number;
+    } | null;
+    if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+    return value;
   }
 
   /**
@@ -1058,7 +1069,15 @@ export class BrowserHub {
     const isPdf =
       /\.pdf(\?|#|$)/i.test(url) || (tab.contentType ?? "").toLowerCase().includes("application/pdf");
     let buf: Buffer;
-    if (isPdf) {
+    if (isPdf && url.startsWith("file:")) {
+      // Neither net.fetch nor session.fetch handles file: URLs, so a local PDF is read
+      // straight off disk.
+      try {
+        buf = await fs.promises.readFile(fileURLToPath(url));
+      } catch (e) {
+        throw new Error(`Could not read the PDF (${e instanceof Error ? e.message : String(e)}).`);
+      }
+    } else if (isPdf) {
       // Fetched through the tab's own session so cookies and the Chrome UA apply — some
       // hosts serve a 403 to anything else.
       const fetcher = wc.session.fetch ? wc.session.fetch.bind(wc.session) : net.fetch;

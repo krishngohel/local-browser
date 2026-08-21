@@ -17,6 +17,8 @@ import zlib from "node:zlib";
 const MAX_CHARS = 40_000;
 /** TJ kerning is in thousandths of an em; a gap this wide is a word break, not tracking. */
 const WORD_GAP = -200;
+/** Ceiling on a single inflated stream, so a zip-bombed PDF cannot exhaust main-process memory. */
+const MAX_INFLATE_BYTES = 64 * 1024 * 1024;
 
 type Operand =
   | { t: "s"; v: string }
@@ -36,13 +38,20 @@ export function extractPdfText(buf: Buffer): string {
   const cmaps = new Map<number, CMap | null>();
   const out: string[] = [];
 
+  // Long documents stop being decoded once the cap is reachable: a few thousand pages would
+  // otherwise block the main process for seconds to produce text nobody sees.
+  let collected = 0;
   for (const obj of objects) {
+    if (collected >= MAX_CHARS) break;
     if (obj.streamAt < 0 || !isContentStream(obj.dict)) continue;
     const data = decodeStream(raw, obj);
     if (data === null) continue;
     const fonts = fontsFor(raw, objects, obj);
     const piece = readTextOperators(data, (name) => cmapForFont(raw, objects, cmaps, fonts.get(name)));
-    if (piece.trim()) out.push(piece);
+    if (piece.trim()) {
+      out.push(piece);
+      collected += piece.length + 1;
+    }
   }
 
   return out
@@ -110,9 +119,12 @@ function decodeStream(raw: string, obj: PdfObject): string | null {
   const body = raw.slice(start, end);
   if (/\/FlateDecode/.test(obj.dict)) {
     try {
-      return zlib.inflateSync(Buffer.from(body, "latin1")).toString("latin1");
+      // A hostile or corrupt PDF can hide a zip bomb in a stream, so the inflated size is
+      // bounded; over the limit zlib throws and the stream is skipped like any other.
+      const opts = { maxOutputLength: MAX_INFLATE_BYTES };
+      return zlib.inflateSync(Buffer.from(body, "latin1"), opts).toString("latin1");
     } catch {
-      return null; // truncated or not really deflate — skip this stream, keep the rest
+      return null; // truncated, not really deflate, or too big — skip it, keep the rest
     }
   }
   // Any other filter (images, JBIG2, …) holds no text this extractor can read.

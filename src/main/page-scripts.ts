@@ -106,9 +106,13 @@ export const PAGE_INFO_SCRIPT = `(() => {
   };
 })()`;
 
-/** `outerHTML` of one ref, or of the whole document. Returns null when the ref is gone. */
-export const htmlScript = (ref: string | null): string => `(() => {
+/**
+ * `outerHTML` of one ref, or of the whole document, sliced to `maxChars` in the page so a
+ * large DOM never crosses IPC in full. Returns null when the ref is gone.
+ */
+export const htmlScript = (ref: string | null, maxChars: number): string => `(() => {
   const el = ${ref ? `document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)})` : "document.documentElement"};
   if (!el) return null;
-  return el.outerHTML || '';
+  const html = el.outerHTML || '';
+  return { html: html.slice(0, ${maxChars}), truncated: html.length > ${maxChars}, total: html.length };
 })()`;

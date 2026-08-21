@@ -146,3 +146,21 @@ test("counts pages", () => {
 test("an empty buffer yields no text", () => {
   assert.equal(extractPdfText(Buffer.alloc(0)), "");
 });
+
+test("a stream that inflates past the size limit is skipped, not expanded into memory", () => {
+  // A zip bomb shaped like a content stream: ~70 MB that deflates to a few KB, carrying real
+  // text operators at the front. Inflating it unbounded costs ~1.8 GB of RSS, so it has to be
+  // refused outright -- and if it were decoded anyway, "bomb text" would show up below.
+  const huge = Buffer.alloc(70 * 1024 * 1024, 0x20);
+  huge.write("BT (bomb text) Tj ET", 0, "latin1");
+  const bomb = zlib.deflateSync(huge);
+  assert.ok(bomb.length < 500_000, "the bomb should be small on disk");
+  const pdf = assemble([
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /Contents 4 0 R >>",
+    { dict: " /Filter /FlateDecode", stream: bomb },
+    { dict: "", stream: Buffer.from("BT (sibling survives) Tj ET", "latin1") },
+  ]);
+  assert.equal(extractPdfText(pdf), "sibling survives");
+});
