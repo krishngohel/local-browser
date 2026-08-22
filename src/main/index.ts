@@ -779,6 +779,8 @@ if (!gotLock) {
 app.on("before-quit", () => {
   quitRequested = true;
   scheduler?.stop();
+  // History writes are debounced, so the last visit of the session may still be queued.
+  history?.flush();
 });
 
 app.on("window-all-closed", () => {

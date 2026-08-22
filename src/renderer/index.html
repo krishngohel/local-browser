@@ -283,7 +283,7 @@
             <div class="card">
               <div>
                 <h3>Interaction depth</h3>
-                <p class="meta">10 tools plus evaluate: hover, drag, right-click, dialogs, frames, zoom, upload.</p>
+                <p class="meta">10 tools plus evaluate: hover, drag, right-click, dialogs, frames, zoom, upload. Upload lets the assistant send any local file it names, and evaluate runs JavaScript in the page if you allow it below.</p>
                 <p class="tokens">On uses 10 slots, or 11 with evaluate allowed below.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsInteract" /><span></span></label>
@@ -291,7 +291,7 @@
             <div class="card">
               <div>
                 <h3>Sessions and state</h3>
-                <p class="meta">9 tools: cookies, storage, history, downloads, bookmarks, clear site data.</p>
+                <p class="meta">9 tools: cookies, storage, history, downloads, bookmarks, clear site data. The assistant can read every cookie and storage value in this profile, including sign-in tokens, and clear site data.</p>
                 <p class="tokens">On uses 9 slots. This reaches your signed-in sessions.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsState" /><span></span></label>
@@ -502,7 +502,7 @@
           </section>
           <section id="section-privacy" class="card-list legal" hidden>
             <h2>Privacy Policy</h2>
-            <p class="meta">Effective August 19, 2026</p>
+            <p class="meta">Effective August 21, 2026</p>
             <p class="help">Echo runs on your computer. It does not create an account with us and does not upload your browsing to our servers.</p>
             <h3>What stays on your device</h3>
             <ul>
@@ -513,6 +513,9 @@
             <h3>What other companies may see</h3>
             <p>Sites you visit (including Google Search) receive your request, IP address, and cookies under <strong>their</strong> policies.</p>
             <p>If you connect Cursor, Claude Desktop, or another MCP client, that app can see page content, screenshots, and anything you are signed in to here. Their privacy policies apply to that data.</p>
+            <ul>
+              <li>If you turn on Sessions and state, an assistant can read the cookies and storage for sites you are signed in to, including sign-in tokens, and clear that data</li>
+            </ul>
             <h3>What we do not collect</h3>
             <p>We do not run an account system, ads, or our own analytics. We do not sell browsing data.</p>
             <h3>Your choices</h3>
@@ -525,14 +528,14 @@
           </section>
           <section id="section-terms" class="card-list legal" hidden>
             <h2>Terms of Service</h2>
-            <p class="meta">Effective August 19, 2026</p>
+            <p class="meta">Effective August 21, 2026</p>
             <p class="help">By using Echo you agree to these terms. The software is also licensed under MIT (see the LICENSE file).</p>
             <h3>The app</h3>
             <p>Echo is a desktop browser with an optional MCP server. It does not sell model API credits. You use your own Cursor, Claude, or other MCP client subscription if you connect one.</p>
             <h3>Acceptable use</h3>
             <p>You agree not to use the app to break the law; attack or access systems without permission; bypass security you are not authorized to test; distribute malware; harm minors; or abuse third-party sites in violation of their terms. You are responsible for sites you visit and for actions a connected assistant takes in this window.</p>
             <h3>AI control</h3>
-            <p>Connecting Cursor, Claude Desktop, or another MCP client authorizes that assistant to navigate, click, type, capture screenshots, read pages, and start or play recordings. Do not connect it to accounts or data you are not allowed to share.</p>
+            <p>Connecting Cursor, Claude Desktop, or another MCP client authorizes that assistant to navigate, click, type, capture screenshots, read pages, read and write cookies and site storage, clear site data, upload local files, run JavaScript when you allow it, and start, play, and schedule recordings. Which of those it can reach depends on the switches in Settings, Transfers. Do not connect it to accounts or data you are not allowed to share.</p>
             <h3>Third parties</h3>
             <p>Google, websites you open, Cursor, and Claude have their own terms. We are not affiliated with Google, Cursor, or Anthropic. Looking like Chrome does not make this app Google Chrome.</p>
             <h3>No warranty</h3>

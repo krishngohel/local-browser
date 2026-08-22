@@ -122,6 +122,8 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 | Sessions and state | 9 | No | cookies, storage, history, downloads, bookmarks, clear site data |
 | Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
 
+Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens.
+
 That adds up to **40 tools on a fresh install** and **68 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **69**, and it needs both Interaction depth and its own switch in Settings → Transfers.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.

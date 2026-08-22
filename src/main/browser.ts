@@ -124,6 +124,14 @@ type Tab = {
    */
   frameIndex: number | null;
   frameUrl: string | null;
+  /**
+   * The last `snapshot()` taken on this tab, keyed by ref. Per tab, so a ref handed out for
+   * one tab can never resolve against another: `click("e5")` after switching tabs finds no
+   * cached entry and no matching `data-lb-ref` in the new document, so it reports
+   * "No element with ref ..." instead of clicking whatever happens to sit at e5 there.
+   * Cleared on this tab's own main-frame navigation.
+   */
+  snapshotByRef: Map<string, SnapshotItem>;
 };
 
 const HOME_URL = "https://www.google.com/";
@@ -186,7 +194,6 @@ export class BrowserHub {
   private seq = 0;
   private settingsOpen = false;
   private rec: Recorder | null = null;
-  private snapshotByRef = new Map<string, SnapshotItem>();
   private watching = false;
   private history: History | null = null;
   private downloads: Downloads | null = null;
@@ -510,6 +517,7 @@ export class BrowserHub {
       contentType: null,
       frameIndex: null,
       frameUrl: null,
+      snapshotByRef: new Map(),
     };
     installChromePageShim(view.webContents);
     this.attachListeners(tab);
@@ -568,11 +576,14 @@ export class BrowserHub {
   }
 
   closeTab(id: string): void {
-    if (this.tabs.size <= 1) {
-      void this.navigate(this.homeUrl);
-      return;
-    }
     const tab = this.requireTab(id);
+    // Closing the only tab must not leave an empty window, but navigating that tab home and
+    // keeping it would keep everything else about it too: its incognito flag and partition,
+    // its console log, its request ring, its content type, its frame selection and its dialog
+    // state. Open a fresh normal tab first and then close the old one through the ordinary
+    // path below, so all of that goes away and the shared incognito session is cleared when
+    // the tab being closed was the last incognito one.
+    if (this.tabs.size <= 1) this.createTab(this.homeUrl, { record: false });
     this.window?.removeBrowserView(tab.view);
     tab.view.webContents.close();
     this.tabs.delete(id);
@@ -935,7 +946,7 @@ export class BrowserHub {
     if (index === null || index === 0) {
       tab.frameIndex = null;
       tab.frameUrl = null;
-      this.snapshotByRef.clear();
+      tab.snapshotByRef.clear();
       return { index: null, url: this.activeUrl(), name: "" };
     }
     const frames = this.listFrames();
@@ -943,7 +954,7 @@ export class BrowserHub {
     if (!frame) throw new Error(`No frame at index ${index}. Call frames to list them.`);
     tab.frameIndex = index;
     tab.frameUrl = frame.url || null;
-    this.snapshotByRef.clear();
+    tab.snapshotByRef.clear();
     return frame;
   }
 
@@ -953,6 +964,7 @@ export class BrowserHub {
   }
 
   async snapshot(): Promise<SnapshotItem[]> {
+    const tab = this.requireActive();
     const items = (await this.exec(`(() => {
       ${ECHO_SELECTORS_SOURCE}
       const sel = 'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
@@ -972,7 +984,8 @@ export class BrowserHub {
         };
       });
     })()`)) as SnapshotItem[];
-    this.snapshotByRef = new Map(items.map((item) => [item.ref, item]));
+    tab.snapshotByRef.clear();
+    for (const item of items) tab.snapshotByRef.set(item.ref, item);
     return items;
   }
 
@@ -1422,7 +1435,7 @@ export class BrowserHub {
   }
 
   private async resolveSelectors(ref: string): Promise<{ selectors: string[]; text?: string }> {
-    const cached = this.snapshotByRef.get(ref);
+    const cached = this.active()?.snapshotByRef.get(ref);
     let live: string[] = [];
     try {
       live = await this.selectorsForRef(ref);
@@ -1837,7 +1850,7 @@ export class BrowserHub {
       this.onChange();
     });
     wc.on("did-navigate", () => {
-      if (this.activeId === tab.id) this.snapshotByRef.clear();
+      tab.snapshotByRef.clear();
       // The frame tree is rebuilt by a top-level navigation, so a stale index would point at
       // a different iframe (or none). This tab goes back to reading its main frame.
       tab.frameIndex = null;

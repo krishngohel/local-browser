@@ -5,10 +5,19 @@ import type { HistoryEntry } from "../shared/types";
 export type { HistoryEntry };
 
 const CAP = 5000;
+/**
+ * How long a change waits before it is written. Every `add` and `updateTitle` used to write
+ * the whole file synchronously on the main thread, and `page-title-updated` fires on every
+ * route change of an SPA — at the 5,000-entry cap that is a ~750 KB blocking write per
+ * keystroke-speed event. A trailing timer collapses a burst into one write.
+ */
+const SAVE_DEBOUNCE_MS = 500;
 
 export class History {
   private entries: HistoryEntry[] = [];
   private file: string;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private pending = false;
 
   constructor(dir: string) {
     this.file = path.join(dir, "history.json");
@@ -66,10 +75,34 @@ export class History {
 
   clear(): void {
     this.entries = [];
+    // Erasing history is a privacy action, so it is written through rather than queued.
     this.save();
+    this.flush();
   }
 
+  /** Queues a write. Repeated calls inside the debounce window collapse into one. */
   private save(): void {
+    this.pending = true;
+    if (this.timer) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      this.flush();
+    }, SAVE_DEBOUNCE_MS);
+    // A queued history write must never be the reason the process stays alive.
+    (this.timer as unknown as { unref?: () => void }).unref?.();
+  }
+
+  /**
+   * Writes a queued change immediately. Called from `before-quit` so nothing is lost on exit,
+   * and by tests that read the file back from disk.
+   */
+  flush(): void {
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    if (!this.pending) return;
+    this.pending = false;
     try {
       fs.mkdirSync(path.dirname(this.file), { recursive: true });
       fs.writeFileSync(this.file, JSON.stringify(this.entries));
