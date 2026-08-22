@@ -206,6 +206,13 @@ export class BrowserHub {
   /** In-flight icon downloads, so several tabs on one site fetch it once. */
   private faviconPending = new Map<string, Promise<string>>();
   private thumbs = new Map<string, { at: number; data: string }>();
+  /**
+   * Sessions `prepareSession` has already wired up. All incognito tabs share one session, so
+   * without this every new private tab added another `will-download` listener to it: one
+   * download would be tracked once per tab ever opened, and the tenth tab tripped Node's
+   * MaxListenersExceededWarning.
+   */
+  private preparedSessions = new WeakSet<Session>();
   private headerSessions = new WeakSet<Session>();
   /** Sessions whose webRequest network listeners are already installed. */
   private networkSessions = new WeakSet<Session>();
@@ -290,8 +297,15 @@ export class BrowserHub {
           /* already detached */
         }
       }
-    } else if (this.activeId) {
-      this.selectTab(this.activeId, { record: false });
+    } else {
+      // `activeId` may name a tab that was closed while Settings was up, so fall back to the
+      // last tab in the strip, and to a fresh one if the strip is somehow empty.
+      const id =
+        this.activeId && this.tabs.has(this.activeId)
+          ? this.activeId
+          : this.order[this.order.length - 1];
+      if (id) this.selectTab(id, { record: false });
+      else this.createTab(this.homeUrl, { record: false });
     }
     this.onChange();
   }
@@ -315,6 +329,8 @@ export class BrowserHub {
 
   /** Chrome UA plus the shared download path, for the persistent and incognito sessions alike. */
   private prepareSession(ses: Session): void {
+    if (this.preparedSessions.has(ses)) return;
+    this.preparedSessions.add(ses);
     applyChromeSession(ses);
     this.trackContentType(ses);
     this.trackNetwork(ses);
@@ -593,7 +609,16 @@ export class BrowserHub {
     this.order = this.order.filter((x) => x !== id);
     if (tab.incognito) void this.releaseIncognitoIfLast();
     if (this.activeId === id) {
-      this.selectTab(this.order[this.order.length - 1], { record: false });
+      const next = this.order[this.order.length - 1];
+      if (this.settingsOpen) {
+        // `selectTab` does nothing while Settings is up, which would leave `activeId` pointing
+        // at the tab just deleted. Move the pointer now, without touching the views (they are
+        // all detached anyway); `setSettingsOpen(false)` attaches the right one.
+        this.activeId = next ?? null;
+        this.onChange();
+      } else {
+        this.selectTab(next, { record: false });
+      }
     } else {
       this.onChange();
     }

@@ -247,7 +247,7 @@ downloads_list
 bookmarks                              // list, add, remove
 ```
 
-For a throwaway session, prefer `tabs_new({ incognito: true })`: that tab has its own cookie jar, keeps nothing on disk, and writes no history.
+For a throwaway session, prefer `tabs_new({ incognito: true })`: incognito tabs share one memory-only cookie jar that is cleared when the last of them closes, keep nothing on disk, and write no history.
 
 ### QA
 
