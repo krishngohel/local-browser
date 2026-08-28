@@ -90,6 +90,8 @@ export type AppSettings = {
   compactChrome: boolean;
   homeUrl: string;
   evaluateEnabled: boolean;
+  /** Small randomized pauses before assistant clicks/keystrokes, so Echo paces like a person. */
+  humanPacing: boolean;
 };
 
 export type ActivityEntry = {

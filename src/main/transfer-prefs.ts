@@ -28,7 +28,7 @@ export const TOOL_GROUP_COUNTS = {
   toolsDebug: 2,
   toolsTest: 5,
   toolsRecord: 5,
-  toolsRead: 8,
+  toolsRead: 9,
   toolsInteract: 10,
   toolsState: 9,
   toolsQa: 9,

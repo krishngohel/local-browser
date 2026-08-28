@@ -179,6 +179,12 @@ export function initSettings(
     void window.lb.updateSettings({ compactChrome: compact.checked });
   });
 
+  const humanPacing = document.getElementById("human-pacing") as HTMLInputElement | null;
+  humanPacing?.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateSettings({ humanPacing: humanPacing.checked });
+  });
+
   const homeUrl = document.getElementById("home-url") as HTMLInputElement;
   document.getElementById("home-url-save")!.addEventListener("click", () => saveHomeUrl(homeUrl));
   homeUrl.addEventListener("keydown", (event) => {
@@ -276,6 +282,9 @@ export function renderSettings(next: AppState): void {
 
   const evaluateInput = document.getElementById("evaluate-enabled") as HTMLInputElement | null;
   if (evaluateInput) evaluateInput.checked = next.settings.evaluateEnabled;
+
+  const humanPacing = document.getElementById("human-pacing") as HTMLInputElement | null;
+  if (humanPacing) humanPacing.checked = next.settings.humanPacing;
 
   renderRecorder(next);
   renderTools(next);

@@ -213,6 +213,7 @@ forms           // fields with name, type, value, label, ref
 page_info       // title, url, meta description, canonical, h1s, counts
 html            // outer HTML of the document or one ref, capped at 50,000 chars
 pdf_text        // text of the current PDF, or the page printed to PDF
+captcha_check   // is a CAPTCHA / anti-bot challenge on the page? (Echo never solves it)
 ```
 
 Use `find` instead of scanning a whole snapshot when you already know the label you want. Use `get_text` rather than `html` unless you need the markup.
@@ -417,7 +418,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `recording_play` | Replay a saved recording by id. Runs locally with no model involved. |
 | `recording_delete` | Delete a saved recording by id. |
 
-### Read and data (8)
+### Read and data (9)
 
 | Tool | What it does |
 | --- | --- |
@@ -429,6 +430,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `page_info` | Title, URL, meta description, language, canonical, h1s, and element counts for the page. |
 | `html` | Outer HTML of the document or of one element by ref. Capped at 50,000 chars. |
 | `pdf_text` | Text of the current PDF, or of the page printed to PDF. |
+| `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. |
 
 ### Interaction depth (11) — off by default
 

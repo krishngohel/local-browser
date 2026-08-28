@@ -27,6 +27,7 @@ import type { AppSettings, AppState, PlayResult, RecordedAction, TransferPrefs }
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
 import { getSettings, setSettings } from "./settings";
+import { cleanChromeUserAgent } from "./user-agent";
 import { ActivityLog } from "./activity";
 import { History } from "./history";
 import { Bookmarks } from "./bookmarks";
@@ -426,6 +427,7 @@ function registerIpc(): void {
   ipcMain.handle("settings:update", (_e, next: Partial<AppSettings>) => {
     const s = setSettings(next);
     hub.setHomeUrl(s.homeUrl);
+    hub.setHumanPacing(s.humanPacing);
     // The evaluate switch lives in settings, and it gates the `evaluate` tool live.
     refreshToolAvailability();
     broadcast();
@@ -680,6 +682,10 @@ if (!gotLock) {
     hub.setHistory(history);
     hub.setDownloads(downloads);
     hub.setHomeUrl(getSettings().homeUrl);
+    hub.setHumanPacing(getSettings().humanPacing);
+    // Present as the plain Chromium Echo genuinely is, so the Electron/app-name tokens in the
+    // default UA don't get pages blocked or downgraded. Must be set before any tab loads.
+    app.userAgentFallback = cleanChromeUserAgent(process.platform, process.versions.chrome);
 
     token = getOrCreateToken();
     setMcpSessionListener(broadcast);

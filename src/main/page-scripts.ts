@@ -155,6 +155,38 @@ export const htmlScript = (ref: string | null, maxChars: number): string => `(()
 })()`;
 
 /**
+ * Scans the page for a CAPTCHA or anti-bot interstitial. Detection only — Echo never solves
+ * these; the result feeds the hand-off that asks the human at the machine to clear it. Looks
+ * for the common widgets (reCAPTCHA, hCaptcha, Cloudflare Turnstile) and the Cloudflare
+ * "checking your browser" interstitial. Returns `{ present, kind, visible }`.
+ */
+export const CAPTCHA_SCAN_SCRIPT = `(() => {
+  const onScreen = (el) => {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    const s = getComputedStyle(el);
+    return s.visibility !== 'hidden' && s.display !== 'none';
+  };
+  const checks = [
+    { kind: 'recaptcha', sel: 'iframe[src*="recaptcha"], .g-recaptcha, #g-recaptcha-response' },
+    { kind: 'hcaptcha', sel: 'iframe[src*="hcaptcha"], .h-captcha, [data-hcaptcha-widget-id]' },
+    { kind: 'turnstile', sel: 'iframe[src*="challenges.cloudflare.com"], .cf-turnstile' },
+    { kind: 'cloudflare', sel: '#challenge-form, #cf-challenge-running, #turnstile-wrapper' },
+  ];
+  for (const c of checks) {
+    const nodes = Array.from(document.querySelectorAll(c.sel));
+    if (nodes.length) return { present: true, kind: c.kind, visible: nodes.some(onScreen) };
+  }
+  // Cloudflare's interstitial sometimes only shows as body text before the widget mounts.
+  const title = (document.title || '').toLowerCase();
+  if (title.includes('just a moment') || title.includes('attention required')) {
+    return { present: true, kind: 'cloudflare', visible: true };
+  }
+  return { present: false, kind: null, visible: false };
+})()`;
+
+/**
  * What kind of upload target a ref is: `null` when the ref is gone, `"file-input"` for an
  * `<input type=file>`, `"other"` for anything else — which `uploadFile` then clicks while
  * intercepting the file chooser it is expected to open.

@@ -7,6 +7,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   compactChrome: false,
   homeUrl: "https://www.google.com/",
   evaluateEnabled: false,
+  humanPacing: true,
 };
 
 function file(dir?: string): string {
@@ -40,5 +41,6 @@ function sanitize(s: Partial<AppSettings>, fallback: AppSettings): AppSettings {
     compactChrome: typeof s.compactChrome === "boolean" ? s.compactChrome : fallback.compactChrome,
     homeUrl: typeof s.homeUrl === "string" && /^https?:\/\//.test(s.homeUrl) ? s.homeUrl : fallback.homeUrl,
     evaluateEnabled: typeof s.evaluateEnabled === "boolean" ? s.evaluateEnabled : fallback.evaluateEnabled,
+    humanPacing: typeof s.humanPacing === "boolean" ? s.humanPacing : fallback.humanPacing,
   };
 }

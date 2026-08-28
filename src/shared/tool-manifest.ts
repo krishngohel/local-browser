@@ -174,6 +174,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   },
   { name: "html", group: "toolsRead", description: "Outer HTML of the document or of one element by ref. Capped at 50,000 chars." },
   { name: "pdf_text", group: "toolsRead", description: "Text of the current PDF, or of the page printed to PDF." },
+  { name: "captcha_check", group: "toolsRead", description: "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window." },
 
   // Interaction depth
   { name: "hover", group: "toolsInteract", description: "Hover an element by ref (opens menus, shows tooltips)." },

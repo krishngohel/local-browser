@@ -31,7 +31,7 @@ const CDP_PORT = 9333;
 const MCP_PORT_PREFERRED = 18931;
 const MCP_PORT_SPAN = 10;
 /** Every tool Echo registers with all groups on and `evaluate` enabled. */
-const TOTAL_TOOLS = 69;
+const TOTAL_TOOLS = 70;
 /** The one tool the e2e run must not call: it hits live Google. */
 const SKIPPED = new Set(["search_web"]);
 
@@ -496,6 +496,11 @@ try {
   await check("pdf_text", async () => {
     await ok("navigate", { url: `${FX}/tables.html` });
     assert.match((await ok("pdf_text")).text, /Table fixture/i);
+  });
+
+  await check("captcha_check on a clean page", async () => {
+    await ok("navigate", { url: `${FX}/index.html` });
+    assert.equal(JSON.parse((await ok("captcha_check")).text).present, false);
   });
 
   await check("screenshot + watch + extract_readable", async () => {

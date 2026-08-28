@@ -165,4 +165,28 @@ export function registerRead(server: McpServer, deps: ToolDeps): void {
       }
     },
   );
+
+  define(
+    server,
+    deps,
+    "captcha_check",
+    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window.",
+    {},
+    async () => {
+      try {
+        const found = await hub.detectCaptcha();
+        if (!found.present) return text(JSON.stringify({ present: false }));
+        return text(
+          JSON.stringify({
+            present: true,
+            kind: found.kind,
+            visible: found.visible,
+            action: "Ask the user to solve it in the Echo window, then continue. Echo does not solve CAPTCHAs.",
+          }),
+        );
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
 }

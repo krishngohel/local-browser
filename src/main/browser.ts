@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, net, session, nativeImage, type Session } from "electron";
+import { BrowserView, BrowserWindow, net, session, nativeImage, Notification, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,7 @@ import { ASSISTANT_NAV_REFUSAL, isAssistantNavigable } from "../shared/url-polic
 import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
+  CAPTCHA_SCAN_SCRIPT,
   PERF_TIMING_SCRIPT,
   fileInputKindScript,
   getTextScript,
@@ -36,6 +37,11 @@ import { DialogPolicies, type DialogPolicy, type DialogSeen } from "./dialogs";
 import type { Downloads } from "./downloads";
 import type { History } from "./history";
 import type { TabInfo } from "../shared/types";
+import { pace } from "./pacing";
+import { RateLimiter } from "./rate-limit";
+
+/** Shape returned by `CAPTCHA_SCAN_SCRIPT`. */
+type CaptchaScan = { present?: boolean; kind?: string | null; visible?: boolean };
 
 export type SnapshotItem = {
   ref: string;
@@ -229,9 +235,20 @@ export class BrowserHub {
    * what stops a second listener being added to it.
    */
   private dialogHookedPages = new WeakSet<PwPage>();
+  /** Per-host 429 backoff, consulted before assistant navigations. */
+  private rateLimiter = new RateLimiter();
+  /** Small randomized pauses before assistant clicks/keystrokes. Mirrors the user setting. */
+  private humanPacing = true;
+  /** Hosts already announced as challenged this session, so the notification fires once each. */
+  private captchaNotified = new Set<string>();
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
+  }
+
+  /** Reflects the "human pacing" setting; read live before each interaction. */
+  setHumanPacing(on: boolean): void {
+    this.humanPacing = on;
   }
 
   setDialogs(d: DialogPolicies): void {
@@ -444,6 +461,12 @@ export class BrowserHub {
         if (details.resourceType === "mainFrame" && details.statusCode >= 400) {
           tab.networkFailures.push(`${details.statusCode} ${details.url}`.slice(0, 400));
           tab.networkFailures = tab.networkFailures.slice(-80);
+        }
+        // 429 from any request tells us this host wants us to back off; remember its window.
+        if (details.statusCode === 429) {
+          const headers = details.responseHeaders ?? {};
+          const key = Object.keys(headers).find((k) => k.toLowerCase() === "retry-after");
+          this.rateLimiter.note429(details.url, key ? String(headers[key]?.[0] ?? "") : undefined);
         }
         const at = started ? new Date(started.start) : new Date();
         this.pushNetwork(tab, {
@@ -751,6 +774,13 @@ export class BrowserHub {
   async navigate(url: string, tabId?: string): Promise<string> {
     const tab = tabId ? this.requireTab(tabId) : this.requireActive();
     const target = normalizeUrl(url);
+    // Honor a standing 429 backoff for this host rather than hammering it.
+    let backedOff = "";
+    const waitMs = this.rateLimiter.waitMsFor(target);
+    if (waitMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+      backedOff = ` (waited ${Math.round(waitMs / 1000)}s for a 429 rate limit)`;
+    }
     this.rec?.beginIgnore();
     try {
       await tab.view.webContents.loadURL(target);
@@ -759,7 +789,55 @@ export class BrowserHub {
       this.rec?.endIgnore();
     }
     this.onChange();
-    return tab.view.webContents.getURL();
+    const landed = tab.view.webContents.getURL();
+    const challenge = await this.noteCaptchaOnLoad(landed);
+    return `${landed}${backedOff}${challenge}`;
+  }
+
+  /**
+   * After a load, checks for a CAPTCHA / anti-bot interstitial. Echo does not solve these; it
+   * notifies the person at the machine (once per host) and returns a line telling the assistant
+   * to pause and hand off. Best-effort: a scan failure never fails the navigation.
+   */
+  private async noteCaptchaOnLoad(landed: string): Promise<string> {
+    let found: CaptchaScan | null = null;
+    try {
+      found = (await this.exec(CAPTCHA_SCAN_SCRIPT)) as CaptchaScan | null;
+    } catch {
+      return "";
+    }
+    if (!found?.present) return "";
+    const host = (() => {
+      try {
+        return new URL(landed).host;
+      } catch {
+        return landed;
+      }
+    })();
+    if (!this.captchaNotified.has(host)) {
+      this.captchaNotified.add(host);
+      try {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: "Echo needs you: CAPTCHA",
+            body: `A ${found.kind ?? "bot"} challenge is on ${host}. Solve it in the Echo window to continue.`,
+          }).show();
+        }
+      } catch {
+        /* notifications are a nicety, never required */
+      }
+    }
+    return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Echo does not solve CAPTCHAs — pause and ask the user to complete it in the Echo window, then continue.`;
+  }
+
+  /** On-demand CAPTCHA scan for the active tab, for the `captcha_check` tool. */
+  async detectCaptcha(): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
+    const found = (await this.exec(CAPTCHA_SCAN_SCRIPT)) as {
+      present: boolean;
+      kind: string | null;
+      visible: boolean;
+    };
+    return found;
   }
 
   /** `navigate` for assistant-driven callers. The omnibox keeps the unrestricted path. */
@@ -1017,6 +1095,7 @@ export class BrowserHub {
   }
 
   async click(ref: string): Promise<void> {
+    await pace(this.humanPacing);
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
@@ -1038,6 +1117,7 @@ export class BrowserHub {
   }
 
   async typeText(ref: string, text: string, submit = false): Promise<void> {
+    await pace(this.humanPacing);
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
@@ -1073,6 +1153,7 @@ export class BrowserHub {
   }
 
   async press(key: string): Promise<void> {
+    await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
@@ -1092,12 +1173,14 @@ export class BrowserHub {
   }
 
   async scroll(deltaY: number): Promise<void> {
+    await pace(this.humanPacing);
     const amount = Number(deltaY) || 600;
     await this.requireActive().view.webContents.executeJavaScript(`window.scrollBy(0, ${amount})`);
     this.rec?.record({ type: "scroll", deltaY: amount });
   }
 
   async select(ref: string, value: string): Promise<void> {
+    await pace(this.humanPacing);
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
@@ -1121,6 +1204,7 @@ export class BrowserHub {
   }
 
   async hover(ref: string): Promise<void> {
+    await pace(this.humanPacing);
     const resolved = await this.resolveSelectors(ref);
     this.rec?.beginIgnore();
     try {
@@ -1164,6 +1248,7 @@ export class BrowserHub {
   }
 
   async doubleClick(ref: string): Promise<void> {
+    await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
@@ -1183,6 +1268,7 @@ export class BrowserHub {
   }
 
   async rightClick(ref: string): Promise<void> {
+    await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
@@ -1208,6 +1294,7 @@ export class BrowserHub {
    * drive it — so this has no executeJavaScript fallback.
    */
   async drag(fromRef: string, to: { ref?: string; dx?: number; dy?: number }): Promise<string> {
+    await pace(this.humanPacing);
     const target = await this.pwTarget({ wait: true });
     if (!target) throw new Error("drag needs Playwright attached; retry in a moment");
     const from = target.root.locator(`[data-lb-ref="${cssEscape(fromRef)}"]`).first();

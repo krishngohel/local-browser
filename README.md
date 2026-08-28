@@ -117,14 +117,14 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 | Console and network | 2 | Yes | `console_errors`, `network_failures` |
 | Product tests | 5 | Yes | viewport, test start / assert / end |
 | Recordings | 5 | Yes | record, list, replay, delete |
-| Read and data | 8 | Yes | text, find, links, tables, forms, page info, HTML, PDF text |
+| Read and data | 9 | Yes | text, find, links, tables, forms, page info, HTML, PDF text, CAPTCHA check |
 | Interaction depth | 10 | No | hover, drag, right-click, dialogs, frames, zoom, file upload |
 | Sessions and state | 9 | No | cookies, storage, history, downloads, bookmarks, clear site data |
 | Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
 
 Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names or writes itself, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens.
 
-That adds up to **40 tools on a fresh install** and **68 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **69**, and it needs both Interaction depth and its own switch in Settings → Transfers.
+That adds up to **41 tools on a fresh install** and **69 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **70**, and it needs both Interaction depth and its own switch in Settings → Transfers.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
 
@@ -334,7 +334,7 @@ On connect, Echo sends a **skill tree** (how to browse, search, screenshot, reco
 
 **Recordings:** `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
 
-**Read and data:** `get_text`, `find`, `links`, `tables`, `forms`, `page_info`, `html`, `pdf_text`
+**Read and data:** `get_text`, `find`, `links`, `tables`, `forms`, `page_info`, `html`, `pdf_text`, `captcha_check`
 
 Three more groups are off until you turn them on in Settings → Tools:
 
