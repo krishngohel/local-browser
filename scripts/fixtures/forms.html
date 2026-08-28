@@ -31,9 +31,20 @@
 
     <p><button type="submit" id="send">Send form</button></p>
   </form>
+  <p><button type="button" id="pick">Pick files</button></p>
   <div id="out">idle</div>
   <script>
     var out = document.getElementById('out');
+    // Custom upload button: opens the native chooser from a detached input, the pattern the
+    // upload_file chooser interception exists for.
+    document.getElementById('pick').addEventListener('click', function () {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.addEventListener('change', function () {
+        window.__picked = input.files[0] ? input.files[0].name : '';
+      });
+      input.click();
+    });
     document.getElementById('demo').addEventListener('submit', function (e) {
       e.preventDefault();
       out.textContent = 'submitted: ' + document.getElementById('name').value +

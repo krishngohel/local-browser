@@ -41,6 +41,13 @@ export function downloadsDir(): string {
   return dir;
 }
 
+/** Where `upload_file` stages inline files the assistant writes before setting them on a page. */
+export function uploadsDir(): string {
+  const dir = path.join(userDataDir(), "uploads");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 export function runsDir(): string {
   const dir = path.join(userDataDir(), "runs");
   fs.mkdirSync(dir, { recursive: true });

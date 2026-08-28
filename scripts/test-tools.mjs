@@ -379,6 +379,23 @@ try {
     assert.equal(JSON.parse((await ok("evaluate", { js: "document.getElementById('file').files[0].name" })).text), "up.txt");
   });
 
+  await check("upload_file inline + chooser button", async () => {
+    await ok("navigate", { url: `${FX}/forms.html` });
+    const inline = await ok("upload_file", {
+      ref: await findRef({ label: "File" }),
+      files: [{ name: "note.txt", content: "written by the model" }],
+    });
+    assert.match(inline.text, /Set 1 file/);
+    assert.equal(JSON.parse((await ok("evaluate", { js: "document.getElementById('file').files[0].name" })).text), "note.txt");
+
+    const picked = await ok("upload_file", {
+      ref: await findRef({ text: "Pick files" }),
+      files: [{ name: "picked.txt", content: "aGVsbG8=", encoding: "base64" }],
+    });
+    assert.match(picked.text, /file chooser/);
+    assert.equal(JSON.parse((await ok("evaluate", { js: "window.__picked" })).text), "picked.txt");
+  });
+
   await check("storage + cookies + clear_site_data", async () => {
     await ok("navigate", { url: `${FX}/storage.html` });
     await ok("click", { ref: await findRef({ text: "save to storage" }) });

@@ -6,6 +6,7 @@ import {
   pwBridge,
   type PwBrowser,
   type PwCdpSession,
+  type PwFileChooser,
   type PwFrame,
   type PwLocatorRoot,
   type PwPage,
@@ -19,6 +20,7 @@ import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
   PERF_TIMING_SCRIPT,
+  fileInputKindScript,
   getTextScript,
   htmlScript,
   keyChordScript,
@@ -1245,7 +1247,12 @@ export class BrowserHub {
     }
   }
 
-  /** Sets files on a file input. Playwright only: `<input type=file>` cannot be filled from page JS. */
+  /**
+   * Uploads files through the element at `ref`. A file input gets `setInputFiles`; anything
+   * else is clicked while Playwright intercepts the file chooser it is expected to open, so a
+   * custom upload button never strands the session on a native dialog. Playwright only:
+   * `<input type=file>` cannot be filled from page JS, and neither can a chooser.
+   */
   async uploadFile(ref: string, paths: string[]): Promise<string> {
     const files = paths.map((p) => String(p).trim()).filter(Boolean);
     if (!files.length) throw new Error("Give at least one file path.");
@@ -1253,11 +1260,31 @@ export class BrowserHub {
     if (missing.length) throw new Error(`No such file: ${missing.join(", ")}`);
     const target = await this.pwTarget({ wait: true });
     if (!target) throw new Error("upload_file needs Playwright attached; retry in a moment");
-    await target.root
-      .locator(`[data-lb-ref="${cssEscape(ref)}"]`)
-      .first()
-      .setInputFiles(files, { timeout: 10_000 });
-    return `Set ${files.length} file${files.length === 1 ? "" : "s"} on ${ref}`;
+    const kind = await this.exec(fileInputKindScript(ref));
+    if (kind === null) throw new Error(`No element with ref ${ref}. Call snapshot for fresh refs.`);
+    const locator = target.root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
+    const count = `${files.length} file${files.length === 1 ? "" : "s"}`;
+    if (kind === "file-input") {
+      await locator.setInputFiles(files, { timeout: 10_000 });
+      return `Set ${count} on ${ref}`;
+    }
+    // Arm the interception before the click so the chooser can never race past it.
+    const chooserWait = target.page.waitForEvent("filechooser", { timeout: 8_000 });
+    chooserWait.catch(() => {});
+    await locator.click({ timeout: 8_000 });
+    let chooser: PwFileChooser;
+    try {
+      chooser = await chooserWait;
+    } catch {
+      throw new Error(
+        `${ref} is not a file input and clicking it did not open a file chooser. Point upload_file at the page's file input or its upload button.`,
+      );
+    }
+    if (files.length > 1 && !chooser.isMultiple()) {
+      throw new Error(`The chooser ${ref} opened accepts a single file; ${files.length} were given.`);
+    }
+    await chooser.setFiles(files);
+    return `Uploaded ${count} through the file chooser ${ref} opened`;
   }
 
   /** Page zoom for the active tab. Omitted/`"reset"` returns to 1. */

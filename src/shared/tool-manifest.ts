@@ -181,7 +181,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   { name: "right_click", group: "toolsInteract", description: "Right-click an element by ref (opens its context menu)." },
   { name: "drag", group: "toolsInteract", description: "Drag an element by ref onto another ref, or by dx/dy pixels." },
   { name: "keyboard_shortcut", group: "toolsInteract", description: "Press a key chord such as Control+Shift+P." },
-  { name: "upload_file", group: "toolsInteract", description: "Set local file paths on a file input by ref." },
+  { name: "upload_file", group: "toolsInteract", description: "Upload to a file input or upload button by ref. Give local file paths, inline files you write yourself ({name, content, encoding: text|base64}), or both." },
   {
     name: "dialog",
     group: "toolsInteract",

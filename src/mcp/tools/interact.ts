@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { define, err, text, type ToolDeps } from "./_helpers";
+import { uploadsDir } from "../../main/paths";
+import { MAX_UPLOAD_FILES_PER_CALL, stageUploadFiles } from "../../main/upload-staging";
 
 /**
  * Interaction depth: the pointer, keyboard, dialog, frame, and zoom controls that go beyond
@@ -104,11 +106,28 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "upload_file",
-    "Set local file paths on a file input by ref.",
-    { ref: z.string(), paths: z.array(z.string()).min(1) },
-    async ({ ref, paths }) => {
+    "Upload to a file input or upload button by ref. Give local file paths, inline files you write yourself ({name, content, encoding: text|base64}), or both.",
+    {
+      ref: z.string(),
+      paths: z.array(z.string()).optional(),
+      files: z
+        .array(
+          z.object({
+            name: z.string().min(1),
+            content: z.string(),
+            encoding: z.enum(["text", "base64"]).optional(),
+          }),
+        )
+        .max(MAX_UPLOAD_FILES_PER_CALL)
+        .optional(),
+    },
+    async ({ ref, paths, files }) => {
       try {
-        return text(await hub.uploadFile(ref, paths));
+        if (!paths?.length && !files?.length) {
+          return err(new Error("Give paths, files, or both."));
+        }
+        const staged = files?.length ? stageUploadFiles(uploadsDir(), files) : [];
+        return text(await hub.uploadFile(ref, [...(paths ?? []), ...staged]));
       } catch (e) {
         return err(e);
       }

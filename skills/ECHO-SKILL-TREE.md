@@ -225,7 +225,7 @@ Off by default. If these tools are missing, tell the user to turn on **Interacti
 hover / double_click / right_click     // by ref, from a fresh snapshot
 drag                                   // ref to ref, or dx/dy pixels
 keyboard_shortcut                      // key chord, e.g. Control+Shift+P
-upload_file                            // set local paths on a file input by ref
+upload_file                            // local paths and/or inline files, to a file input or upload button
 zoom                                   // page zoom factor, or omit to reset
 frames / frame_select                  // list iframes, scope tools to one by index
 dialog                                 // decide in advance how the next alert, confirm, or prompt is answered, then read the last dialog seen
@@ -439,7 +439,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `right_click` | Right-click an element by ref (opens its context menu). |
 | `drag` | Drag an element by ref onto another ref, or by dx/dy pixels. |
 | `keyboard_shortcut` | Press a key chord such as Control+Shift+P. |
-| `upload_file` | Set local file paths on a file input by ref. |
+| `upload_file` | Upload to a file input or upload button by ref. Give local file paths, inline files you write yourself ({name, content, encoding: text|base64}), or both. |
 | `dialog` | Set how alerts, confirms, and prompts are answered on this tab (accept or dismiss, optional prompt text) and report the last dialog seen. Covers dialogs raised by the main frame. |
 | `frames` | List iframes on the page. |
 | `frame_select` | Scope snapshot/click/get_text to an iframe by index; omit index to return to the main frame. |

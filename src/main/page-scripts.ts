@@ -155,6 +155,19 @@ export const htmlScript = (ref: string | null, maxChars: number): string => `(()
 })()`;
 
 /**
+ * What kind of upload target a ref is: `null` when the ref is gone, `"file-input"` for an
+ * `<input type=file>`, `"other"` for anything else — which `uploadFile` then clicks while
+ * intercepting the file chooser it is expected to open.
+ */
+export const fileInputKindScript = (ref: string): string => `(() => {
+  const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
+  if (!el) return null;
+  return el.tagName === 'INPUT' && (el.getAttribute('type') || '').toLowerCase() === 'file'
+    ? 'file-input'
+    : 'other';
+})()`;
+
+/**
  * Dispatches a sequence of mouse events on one ref, centred on the element, for the
  * hover/double_click/right_click fallbacks when Playwright is not attached. Returns false
  * when the ref is gone so the caller can tell the assistant to snapshot again.

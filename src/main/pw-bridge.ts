@@ -31,6 +31,13 @@ export type PwDialog = {
   dismiss: () => Promise<void>;
 };
 
+/** The intercepted native file picker: while a `filechooser` waiter is armed, Playwright
+ * suppresses the OS dialog and hands the choice here instead. */
+export type PwFileChooser = {
+  setFiles: (files: string[]) => Promise<void>;
+  isMultiple: () => boolean;
+};
+
 export type PwMouse = {
   move: (x: number, y: number, opts?: { steps?: number }) => Promise<void>;
   down: (opts?: { button?: "left" | "right" | "middle" }) => Promise<void>;
@@ -41,6 +48,7 @@ export type PwPage = PwLocatorRoot & {
   frames: () => PwFrame[];
   mouse: PwMouse;
   on: (event: "dialog", listener: (dialog: PwDialog) => void) => void;
+  waitForEvent: (event: "filechooser", opts?: { timeout?: number }) => Promise<PwFileChooser>;
   getByText: (text: string, opts?: { exact?: boolean }) => PwLocator;
   getByRole: (role: string, opts?: { name?: string; exact?: boolean }) => PwLocator;
   getByPlaceholder: (text: string) => PwLocator;
