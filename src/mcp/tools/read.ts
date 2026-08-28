@@ -3,7 +3,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { define, err, text, type ToolDeps } from "./_helpers";
 
 export function registerRead(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsRead) return;
   const hub = deps.hub;
 
   define(

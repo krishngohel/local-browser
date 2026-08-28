@@ -4,7 +4,6 @@ import { getTransferPrefs } from "../../main/transfer-prefs";
 import { define, err, text, type ToolDeps } from "./_helpers";
 
 export function registerSearch(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsSearch) return;
   const hub = deps.hub;
 
   define(

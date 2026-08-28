@@ -8,11 +8,10 @@ import { MAX_UPLOAD_FILES_PER_CALL, stageUploadFiles } from "../../main/upload-s
  * Interaction depth: the pointer, keyboard, dialog, frame, and zoom controls that go beyond
  * click and type. Every element argument is a `ref` from the latest `snapshot`.
  *
- * `evaluate` lives in this group but is registered only when the user has switched it on in
+ * `evaluate` lives in this group but stays disabled until the user switches it on in
  * Settings, so arbitrary page JavaScript is never exposed by enabling a tool group alone.
  */
 export function registerInteract(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsInteract) return;
   const hub = deps.hub;
 
   define(
@@ -202,20 +201,18 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
     },
   );
 
-  if (deps.settings().evaluateEnabled) {
-    define(
-      server,
-      deps,
-      "evaluate",
-      "Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers.",
-      { js: z.string() },
-      async ({ js }) => {
-        try {
-          return text(await hub.evaluate(js, 20_000));
-        } catch (e) {
-          return err(e);
-        }
-      },
-    );
-  }
+  define(
+    server,
+    deps,
+    "evaluate",
+    "Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers.",
+    { js: z.string() },
+    async ({ js }) => {
+      try {
+        return text(await hub.evaluate(js, 20_000));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
 }

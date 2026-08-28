@@ -39,7 +39,6 @@ function verdict(ok: boolean, message: string) {
  * when `test_start` has been called, and simply answer when it has not.
  */
 export function registerQa(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsQa) return;
   const hub = deps.hub;
   const tests = deps.tests;
 

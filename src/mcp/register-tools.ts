@@ -13,6 +13,7 @@ import { registerState } from "./tools/state";
 import { registerQa } from "./tools/qa";
 
 export type { ToolDeps } from "./tools/_helpers";
+export { refreshToolAvailability } from "./tools/_helpers";
 
 export function registerTools(server: McpServer, deps: ToolDeps): void {
   registerSkillDocs(server);

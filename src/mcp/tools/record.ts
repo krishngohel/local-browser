@@ -3,7 +3,6 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { define, err, text, type ToolDeps } from "./_helpers";
 
 export function registerRecord(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsRecord) return;
   const hub = deps.hub;
   const recorder = deps.recorder;
 

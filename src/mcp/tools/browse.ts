@@ -4,7 +4,6 @@ import { getTransferPrefs } from "../../main/transfer-prefs";
 import { define, err, photo, text, type ToolDeps } from "./_helpers";
 
 export function registerBrowse(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsBrowse) return;
   const hub = deps.hub;
 
   define(server, deps, "tabs_list", "List open browser tabs.", {}, async () => {

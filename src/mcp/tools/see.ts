@@ -4,7 +4,6 @@ import { getTransferPrefs } from "../../main/transfer-prefs";
 import { define, err, photo, text, type ToolDeps } from "./_helpers";
 
 export function registerSee(server: McpServer, deps: ToolDeps): void {
-  if (!deps.prefs.toolsSee) return;
   const hub = deps.hub;
 
   define(

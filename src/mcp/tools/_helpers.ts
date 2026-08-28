@@ -56,17 +56,55 @@ export function photo(caption: string, jpeg: Buffer): ToolResult {
   };
 }
 
-/** Group each tool belongs to, by name. Registration is gated on it; so is every call. */
+/** Group each tool belongs to, by name. Availability is gated on it; so is every call. */
 const GROUP_OF = new Map<string, ToolGroup>(TOOL_MANIFEST.map((entry) => [entry.name, entry.group]));
+
+/** The slice of the SDK's RegisteredTool that availability updates need. */
+type RegisteredToolControl = { enabled: boolean; enable: () => void; disable: () => void };
+
+type SessionTools = { deps: ToolDeps; tools: Map<string, { tool: RegisteredToolControl; group: ToolGroup }> };
+
+/**
+ * Every live session's registered tools, so a Transfers switch can reach sessions that are
+ * already connected. Entries are dropped when the session's transport closes.
+ */
+const liveSessions = new Map<McpServer, SessionTools>();
+
+function wantEnabled(name: string, group: ToolGroup, prefs: TransferPrefs, evaluateEnabled: boolean): boolean {
+  if (group === "always") return true;
+  if (!prefs[group as keyof TransferPrefs]) return false;
+  if (name === "evaluate") return evaluateEnabled;
+  return true;
+}
+
+/**
+ * Re-applies the current Transfers switches (and the evaluate switch) to every connected
+ * session. The SDK sends `notifications/tools/list_changed` on each state flip, so an
+ * assistant that supports it sees tools appear and disappear without reconnecting. Called
+ * from the settings IPC handlers whenever either store changes.
+ */
+export function refreshToolAvailability(): void {
+  const prefs = getTransferPrefs();
+  for (const entry of liveSessions.values()) {
+    const evaluateEnabled = entry.deps.settings().evaluateEnabled;
+    for (const [name, { tool, group }] of entry.tools) {
+      const want = wantEnabled(name, group, prefs, evaluateEnabled);
+      if (tool.enabled === want) continue;
+      if (want) tool.enable();
+      else tool.disable();
+    }
+  }
+}
 
 /**
  * Registers one tool and routes it through the activity log (pause + history).
  *
- * `deps.prefs` is a snapshot taken when the session registered, so registration alone cannot
- * revoke anything: an assistant that connected while "Sessions and state" was on keeps those
- * tools for the life of its session. The switch is only a real control if every call re-reads
- * it, which is what the wrapper below does. Registration-time gating stays as it is — it is
- * what keeps a turned-off group out of `listTools`.
+ * Every tool is registered on every session; a tool whose group is switched off is registered
+ * disabled, which keeps it out of `listTools`. The Transfers switches then flip the disabled
+ * state live via `refreshToolAvailability`, so toggling a group reaches assistants that are
+ * already connected — turning on no longer needs a reconnect. The per-call guard below
+ * re-reads the stored prefs anyway: a call that races a switch-off is still refused, and the
+ * refusal is visible in the activity log.
  */
 export function define<S extends ZodRawShape>(
   server: McpServer,
@@ -99,6 +137,26 @@ export function define<S extends ZodRawShape>(
   const wrapped = deps.activity.wrap(name, deps.clientName, guarded);
   // The SDK's generic overloads blow the instantiation depth limit when `schema` is a
   // type parameter, so the registration itself is called through a widened signature.
-  type Register = (name: string, description: string, schema: ZodRawShape, handler: unknown) => void;
-  (server.tool as unknown as Register)(name, description, schema, wrapped);
+  type Register = (name: string, description: string, schema: ZodRawShape, handler: unknown) => unknown;
+  const registered = (server.tool as unknown as Register)(name, description, schema, wrapped) as
+    | RegisteredToolControl
+    | undefined;
+  // Unit tests register against a bare fake whose `tool()` returns nothing; only a real SDK
+  // registration is tracked for live switching.
+  if (!registered || typeof registered.disable !== "function") return;
+  if (!wantEnabled(name, group, deps.prefs, deps.settings().evaluateEnabled)) registered.disable();
+  let entry = liveSessions.get(server);
+  if (!entry) {
+    entry = { deps, tools: new Map() };
+    liveSessions.set(server, entry);
+    const inner = (server as unknown as { server?: { onclose?: () => void } }).server;
+    if (inner) {
+      const previousOnClose = inner.onclose;
+      inner.onclose = () => {
+        previousOnClose?.();
+        liveSessions.delete(server);
+      };
+    }
+  }
+  entry.tools.set(name, { tool: registered, group });
 }

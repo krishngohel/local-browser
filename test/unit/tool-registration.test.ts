@@ -12,7 +12,7 @@ import {
   setTransferPrefsDir,
 } from "../../src/main/transfer-prefs";
 import { registerTools } from "../../src/mcp/register-tools";
-import type { ToolDeps, ToolResult } from "../../src/mcp/tools/_helpers";
+import { refreshToolAvailability, type ToolDeps, type ToolResult } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
 import type { TransferPrefs } from "../../src/shared/types";
 
@@ -32,13 +32,25 @@ const IMPLEMENTED_GROUPS: ToolGroup[] = [
 ];
 
 type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
-type Registered = { name: string; description: string; handler: Handler };
+type ToolControl = { enabled: boolean; enable: () => void; disable: () => void };
+type Registered = { name: string; description: string; handler: Handler; tool: ToolControl };
 
 function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
   const registered: Registered[] = [];
   const server = {
-    tool(name: string, description: string, _schema: unknown, handler: unknown) {
-      registered.push({ name, description, handler: handler as Handler });
+    // Mirrors the SDK: `tool()` returns a RegisteredTool whose enabled state Echo flips live.
+    tool(name: string, description: string, _schema: unknown, handler: unknown): ToolControl {
+      const control: ToolControl = {
+        enabled: true,
+        enable() {
+          this.enabled = true;
+        },
+        disable() {
+          this.enabled = false;
+        },
+      };
+      registered.push({ name, description, handler: handler as Handler, tool: control });
+      return control;
     },
     registerResource() {},
     registerPrompt() {},
@@ -87,16 +99,49 @@ test("every manifest entry in an implemented group is registered exactly once", 
   }
 });
 
-test("evaluate is registered only when the user has enabled it", () => {
-  const on = registerAll({ evaluateEnabled: true }).map((t) => t.name);
-  const off = registerAll({ evaluateEnabled: false }).map((t) => t.name);
-  assert.ok(on.includes("evaluate"), "evaluate missing with evaluateEnabled on");
-  assert.ok(!off.includes("evaluate"), "evaluate registered with evaluateEnabled off");
-  assert.equal(off.length, on.length - 1, "only evaluate should differ");
-  // The rest of the interaction group is unaffected by the evaluate switch.
+test("evaluate always registers but stays disabled until the user enables it", () => {
+  const on = registerAll({ evaluateEnabled: true });
+  const off = registerAll({ evaluateEnabled: false });
+  const onEval = on.find((t) => t.name === "evaluate");
+  const offEval = off.find((t) => t.name === "evaluate");
+  assert.ok(onEval?.tool.enabled, "evaluate should be enabled when evaluateEnabled is on");
+  assert.ok(offEval && !offEval.tool.enabled, "evaluate should register but be disabled when evaluateEnabled is off");
+  // The tool surface itself is identical either way; only evaluate's enabled state differs.
+  assert.equal(off.length, on.length, "evaluate registers regardless of the switch");
+  // The rest of the interaction group registers enabled with the group on.
   for (const name of ["hover", "double_click", "right_click", "drag", "keyboard_shortcut",
     "upload_file", "dialog", "frames", "frame_select", "zoom"]) {
-    assert.ok(off.includes(name), `${name} should register without evaluateEnabled`);
+    assert.ok(off.find((t) => t.name === name)?.tool.enabled, `${name} should register enabled`);
+  }
+});
+
+/**
+ * The bug behind "I can't turn tools on and off": a switch flipped after an assistant connected
+ * did nothing, because its tool list was fixed at connect. Tools now register on every session
+ * and `refreshToolAvailability` flips their enabled state in place when a switch changes.
+ */
+test("refreshToolAvailability follows the switches on an already-registered session", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-live-toggle-"));
+  setTransferPrefsDir(dir);
+  try {
+    setTransferPrefs(
+      Object.fromEntries(Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, true])) as TransferPrefs,
+    );
+    const reg = registerAll();
+    const upload = reg.find((t) => t.name === "upload_file");
+    assert.ok(upload?.tool.enabled, "upload_file starts enabled with Interaction depth on");
+
+    // The user turns the group off after the assistant is already connected.
+    setTransferPrefs({ toolsInteract: false });
+    refreshToolAvailability();
+    assert.equal(upload!.tool.enabled, false, "upload_file goes disabled live when the group is turned off");
+
+    setTransferPrefs({ toolsInteract: true });
+    refreshToolAvailability();
+    assert.equal(upload!.tool.enabled, true, "upload_file comes back live when the group is turned on");
+  } finally {
+    setTransferPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -15,7 +15,7 @@ import { BrowserHub } from "./browser";
 import { connectSnippets, connectStatus, claudeConfigRevealTarget, registerChatGpt, registerClaudeDesktop, registerCursor } from "./connect-clients";
 import { startMcpHttp } from "./mcp-http";
 import { mcpLiveStatus, setMcpSessionListener } from "./mcp-sessions";
-import { registerTools } from "../mcp/register-tools";
+import { refreshToolAvailability, registerTools } from "../mcp/register-tools";
 import { TOOL_MANIFEST } from "../shared/tool-manifest";
 import { CDP_PORT, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpPort, mcpUrl, mcpUrlForHost, userDataDir, writeMcpPortFile } from "./paths";
 import { lanIPv4s } from "./net";
@@ -408,6 +408,8 @@ function registerIpc(): void {
   });
   ipcMain.handle("transfer:set", (_e, next: Partial<TransferPrefs>) => {
     const prefs = setTransferPrefs(next);
+    // Reaches assistants that are already connected: their tool lists update in place.
+    refreshToolAvailability();
     broadcast();
     return prefs;
   });
@@ -424,6 +426,8 @@ function registerIpc(): void {
   ipcMain.handle("settings:update", (_e, next: Partial<AppSettings>) => {
     const s = setSettings(next);
     hub.setHomeUrl(s.homeUrl);
+    // The evaluate switch lives in settings, and it gates the `evaluate` tool live.
+    refreshToolAvailability();
     broadcast();
     return s;
   });
