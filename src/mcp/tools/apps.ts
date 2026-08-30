@@ -9,7 +9,7 @@ export function registerApps(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "apps_session_start",
-    "Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another.",
+    "Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another. Grid tabs cannot take file uploads and have no visible window for the user to solve a CAPTCHA in, so run any application that needs upload_file or a manual CAPTCHA hand-off as an ordinary tab instead.",
     { urls: z.array(z.string()).min(1).max(6) },
     async ({ urls }) => {
       try {

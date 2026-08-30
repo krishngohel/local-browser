@@ -5,7 +5,7 @@
  *
  * Starts the fixture server and a real Echo (Electron) on a throwaway profile with every
  * tool group switched on, connects an MCP client over Streamable HTTP, and calls every one
- * of the 74 tools at least once. `search_web` is the single exception: it drives live
+ * of the 76 tools at least once. `search_web` is the single exception: it drives live
  * Google, which has no place in a test that must pass offline.
  *
  * Failures are collected rather than thrown, so one broken tool does not hide the rest; the
@@ -581,6 +581,55 @@ try {
     // Second tab is independently addressable, not a shadow of the first.
     const other = await json("page_info", { tabId: tabIds[1] });
     assert.match(other.url, /app=2/);
+
+    // Batch-fill a tab that is never attached to the window: the per-tab action queue, the
+    // background-tab DOM fallback (a Playwright action would be swallowed here) and fill_form's
+    // batching, composed on a real OSR tab. Submitting afterwards proves the values are in the
+    // page's own DOM rather than just reported back.
+    const osrForm = (await json("forms", { tabId: tabIds[0] }))[0];
+    const field = (name) => osrForm.fields.find((f) => f.name === name);
+    assert.ok(
+      field("name")?.ref && field("color")?.ref && field("agree")?.ref,
+      `missing refs on the OSR tab's form: ${JSON.stringify(osrForm.fields)}`,
+    );
+    const filled = await json("fill_form", {
+      tabId: tabIds[0],
+      fields: [
+        { ref: field("name").ref, value: "Ada in the grid" },
+        { ref: field("color").ref, value: "blue" },
+        { ref: field("agree").ref, value: "true" },
+      ],
+    });
+    assert.equal(filled.every((r) => r.ok === true), true, JSON.stringify(filled));
+    const osrAfter = (await json("forms", { tabId: tabIds[0] }))[0].fields;
+    assert.equal(osrAfter.find((f) => f.name === "name")?.value, "Ada in the grid");
+    assert.equal(osrAfter.find((f) => f.name === "color")?.value, "blue");
+    const submitRef = refOf((await ok("find", { text: "Send form", tabId: tabIds[0] })).text, "the OSR tab's submit button");
+    await ok("click", { ref: submitRef, tabId: tabIds[0] });
+    await ok("wait_for", { text: "submitted: Ada in the grid", tabId: tabIds[0] });
+    assert.match((await ok("get_text", { tabId: tabIds[0] })).text, /submitted: Ada in the grid \/ blue/);
+
+    // screenshot/watch need an attached BrowserView, and the grid detaches every ordinary tab's.
+    // Before this refused up front they ran the capture anyway and took ~14 s and ~15 s to fail
+    // with a bare "Timed out after 6000ms"; the session's own tabs still photograph fine.
+    const t0 = Date.now();
+    const refusedShot = await call("screenshot", {});
+    assert.equal(refusedShot.isError, true, "screenshot on a regular tab should refuse during a session");
+    assert.match(refusedShot.text, /applications grid session is open/);
+    assert.ok(Date.now() - t0 < 5000, `screenshot should refuse immediately, took ${Date.now() - t0}ms`);
+    const refusedWatch = await call("watch", { durationMs: 800 });
+    assert.equal(refusedWatch.isError, true, "watch on a regular tab should refuse during a session");
+    assert.match(refusedWatch.text, /applications grid session is open/);
+    assert.equal((await call("screenshot", { tabId: tabIds[0] })).isError, undefined, "an OSR tab still photographs");
+
+    // tabs_select cannot move focus while the grid is up, so it must say so rather than
+    // reporting a move that never happened.
+    const selectDuring = await call("tabs_select", { id: before[0].id });
+    assert.equal(selectDuring.isError, true, "tabs_select should refuse while the grid is open");
+    assert.match(selectDuring.text, /applications grid session is open/);
+    const selectOsr = await call("tabs_select", { id: tabIds[0] });
+    assert.equal(selectOsr.isError, true, "tabs_select should refuse an OSR tab");
+    assert.match(selectOsr.text, /renders in the applications grid/);
 
     // tabs_list flags OSR tabs so the grid can tell them from ordinary tabs.
     const duringSession = await json("tabs_list");

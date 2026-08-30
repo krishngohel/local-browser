@@ -251,9 +251,12 @@ downloads_list
 bookmarks                              // list, add, remove
 profile_get / profile_set              // stored applicant name/email/phone/address/links
 profile_suggest_fill                   // match the current form's fields to the profile by label; suggestions only, never fills
+apps_session_start / apps_session_end  // up to 6 URLs as a live grid the user watches, each driveable by tabId
 ```
 
 For a throwaway session, prefer `tabs_new({ incognito: true })`: incognito tabs share one memory-only cookie jar that is cleared when the last of them closes, keep nothing on disk, and write no history.
+
+Before routing an application into a grid session, check what it will need. A grid tab renders offscreen, so it cannot take a file upload (`upload_file`) and there is no visible window for the user to solve a CAPTCHA in — an application that needs a resume attached, or that is likely to challenge you, belongs in an ordinary tab. While a session is open, `screenshot` and `watch` also work only on the session's own tabIds, not on ordinary tabs; end the session first to go back to those.
 
 ### QA
 
@@ -277,6 +280,8 @@ If the photo shows captcha, consent, login, or 2FA:
 2. Tell the user to finish it **in the Echo window**.
 3. `wait_for` (optionally `{ text: "…" }`).
 4. `snapshot` again and continue.
+
+This hand-off does not exist on a grid tab (`apps_session_start`): it renders offscreen, so there is no window for the user to finish anything in. Run a site that may challenge you as an ordinary tab.
 
 ---
 
@@ -352,7 +357,7 @@ If the photo shows captcha, consent, login, or 2FA:
 
 ---
 
-## 6. Every tool (74)
+## 6. Every tool (76)
 
 Generated from Echo's tool manifest. Groups marked **off by default** only appear once the user turns them on in Settings → Transfers and reconnects the client. `evaluate` needs its own switch on the same page, on top of its group.
 
@@ -470,7 +475,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `profile_get` | Read the stored applicant profile (name, email, phone, address, links). Empty fields mean nothing is stored yet. |
 | `profile_set` | Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed. |
 | `profile_suggest_fill` | Match the current tab's form fields (from the last forms() call) to the stored profile by label. Returns { ref, label, suggestedValue, confidence } for fields it's confident about; it never fills anything itself and never guesses for a field with no clear match — review each suggestion (or ask the user) before calling fill_form with the ones you accept. Optionally target a specific tabId. |
-| `apps_session_start` | Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another. |
+| `apps_session_start` | Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another. Grid tabs cannot take file uploads and have no visible window for the user to solve a CAPTCHA in, so run any application that needs upload_file or a manual CAPTCHA hand-off as an ordinary tab instead. |
 | `apps_session_end` | End the current applications-session tracking. With close (default true), also closes those tabs. With close: false, the tabs stay open as OSR tabs — still addressable by tabId and still visible in the grid view — they just stop counting toward this session, so a new apps_session_start can open a fresh batch. |
 
 ### Automation and QA (9) — off by default
