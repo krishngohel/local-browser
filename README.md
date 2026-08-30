@@ -118,13 +118,13 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 | Product tests | 5 | Yes | viewport, test start / assert / end |
 | Recordings | 5 | Yes | record, list, replay, delete |
 | Read and data | 9 | Yes | text, find, links, tables, forms, page info, HTML, PDF text, CAPTCHA check |
-| Interaction depth | 10 | No | hover, drag, right-click, dialogs, frames, zoom, file upload |
-| Sessions and state | 9 | No | cookies, storage, history, downloads, bookmarks, clear site data |
+| Interaction depth | 11 | No | hover, drag, right-click, dialogs, frames, zoom, file upload, batch-fill a form |
+| Sessions and state | 14 | No | cookies, storage, history, downloads, bookmarks, clear site data, applicant profile, live application sessions |
 | Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
 
-Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names or writes itself, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens.
+Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names or writes itself, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens, plus the applicant profile you save for job applications.
 
-That adds up to **41 tools on a fresh install** and **69 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **70**, and it needs both Interaction depth and its own switch in Settings → Transfers.
+That adds up to **41 tools on a fresh install** and **75 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **76**, and it needs both Interaction depth and its own switch in Settings → Transfers.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
 
@@ -338,9 +338,9 @@ On connect, Echo sends a **skill tree** (how to browse, search, screenshot, reco
 
 Three more groups are off until you turn them on in Settings → Tools:
 
-**Interaction depth:** `hover`, `double_click`, `right_click`, `drag`, `keyboard_shortcut`, `upload_file`, `dialog`, `frames`, `frame_select`, `zoom` (plus `evaluate` with its own switch)
+**Interaction depth:** `hover`, `double_click`, `right_click`, `drag`, `keyboard_shortcut`, `upload_file`, `dialog`, `frames`, `frame_select`, `zoom`, `fill_form` (plus `evaluate` with its own switch)
 
-**Sessions and state:** `cookies_get`, `cookies_set`, `cookies_clear`, `storage_get`, `storage_set`, `clear_site_data`, `history_search`, `downloads_list`, `bookmarks`
+**Sessions and state:** `cookies_get`, `cookies_set`, `cookies_clear`, `storage_get`, `storage_set`, `clear_site_data`, `history_search`, `downloads_list`, `bookmarks`, `profile_get`, `profile_set`, `profile_suggest_fill`, `apps_session_start`, `apps_session_end`
 
 **Automation and QA:** `assert_visible`, `assert_url`, `assert_count`, `visual_baseline`, `visual_diff`, `perf_timing`, `network_log`, `schedule_recording`, `run_recording_steps`
 

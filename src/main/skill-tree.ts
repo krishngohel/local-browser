@@ -12,6 +12,8 @@ If tools named navigate, snapshot, screenshot, watch, search_web exist, use them
 Always: snapshot before click/type/fill. Use refs like e0, e1. Filling several fields at once (e.g. a job application)? Use fill_form with { ref, value } pairs instead of separate fill/select/click calls. snapshot/screenshot return a photo of the page. watch returns a short live feed for animations. Stop on captcha/login/2FA and ask the user to finish it in the Echo window, then wait_for.
 
 Applying to jobs? profile_get/profile_set store the applicant's name, email, phone, address, and links once so fill_form (and profile_suggest_fill) can reuse them across applications instead of asking the user to retype them each time.
+
+Working several applications at once? Use apps_session_start to open them as a live grid, address each one by the tabId it returns, and use fill_form/profile_suggest_fill on each tab to fill them fast.
 `;
 
 let cached: string | null = null;
