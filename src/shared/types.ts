@@ -5,6 +5,12 @@ export type TabInfo = {
   loading: boolean;
   favicon: string | null;
   incognito: boolean;
+  /**
+   * True for an offscreen-rendered "applications" tab: it has no view attached to the window
+   * and is watched in the grid instead, so it cannot be selected as the main view. Still
+   * addressable by tabId like any other tab, and stays listed after its session ends.
+   */
+  osr: boolean;
 };
 
 export type HistoryEntry = { url: string; title: string; visitedAt: string };

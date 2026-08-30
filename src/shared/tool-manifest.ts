@@ -247,7 +247,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "apps_session_end",
     group: "toolsState",
-    description: "End the current applications grid session. Set close to false to keep the tabs open as regular tabs instead of closing them (default: close them).",
+    description: "End the current applications-session tracking. With close (default true), also closes those tabs. With close: false, the tabs stay open as OSR tabs — still addressable by tabId and still visible in the grid view — they just stop counting toward this session, so a new apps_session_start can open a fresh batch.",
   },
 
   // Automation and QA

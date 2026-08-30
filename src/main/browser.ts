@@ -664,6 +664,14 @@ export class BrowserHub {
     // Render no faster than `forwardGridFrame` forwards, so the throttle there drops
     // almost nothing and the compositor is not doing work that gets thrown away.
     win.webContents.setFrameRate(GRID_FPS);
+    // `app.quit()` closes this window with `close()`, which runs the page's `beforeunload`.
+    // A page that vetoes unload — job application forms very often do, to warn about losing a
+    // half-filled draft — would cancel that close and abort the whole quit sequence, leaving
+    // the user picking Quit from the tray with nothing happening and no visible window to
+    // explain why. Echo owns this window and is closing it deliberately, so always allow it.
+    // Normal tabs never hit this: `closeTab` uses `webContents.close()` (no beforeunload) and
+    // an OSR tab closed that way is `destroy()`ed, which bypasses it too.
+    win.webContents.on("will-prevent-unload", (event) => event.preventDefault());
     const tab: Tab = {
       id,
       view: win,
@@ -740,8 +748,14 @@ export class BrowserHub {
   }
 
   /**
-   * End the open session. By default the tabs are closed; `close: false` keeps them, but they
-   * stay OSR tabs — the grid is where they are visible.
+   * Stop tracking the open session. By default its tabs are closed too.
+   *
+   * `close: false` keeps them: they stay OSR tabs, still addressable by tabId and still shown
+   * in the grid (which lists every open OSR tab, not just the tracked session's), and they
+   * simply stop counting toward the cap so the next `createAppsSession` can open a fresh
+   * batch. They are deliberately not converted back into ordinary attached tabs — Electron
+   * cannot re-host a window's contents as a `BrowserView`, and re-creating them would throw
+   * away the half-filled form that is the whole reason to keep them.
    */
   endAppsSession(opts?: { close?: boolean }): void {
     const ids = this.appsSessionTabIds;
@@ -896,6 +910,7 @@ export class BrowserHub {
         loading: wc.isLoading(),
         favicon: tab.favicon,
         incognito: tab.incognito,
+        osr: tab.osr,
       };
     });
   }

@@ -582,6 +582,13 @@ try {
     const other = await json("page_info", { tabId: tabIds[1] });
     assert.match(other.url, /app=2/);
 
+    // tabs_list flags OSR tabs so the grid can tell them from ordinary tabs.
+    const duringSession = await json("tabs_list");
+    for (const id of tabIds) {
+      assert.equal(duringSession.find((t) => t.id === id)?.osr, true, `${id} should be osr`);
+    }
+    assert.equal(duringSession.find((t) => !tabIds.includes(t.id))?.osr, false);
+
     // Closing the active tab while a session is open must fall back to a real tab. OSR tabs
     // sit at the end of the strip order but can never be attached, so picking "the last tab"
     // blindly would refuse and leave the window without a view.
@@ -609,6 +616,34 @@ try {
     const reopened = await json("apps_session_start", { urls: [`${FX}/index.html`] });
     assert.equal(reopened.tabIds.length, 1);
     await ok("apps_session_end", {});
+  });
+
+  await check("apps_session_end close:false keeps the tabs open, addressable, and flagged osr", async () => {
+    const { tabIds } = await json("apps_session_start", { urls: [`${FX}/forms.html?kept=1`] });
+    const kept = tabIds[0];
+    await ok("wait_for", { text: "Form fixture", tabId: kept });
+
+    await ok("apps_session_end", { close: false });
+
+    // The tab is still open, still an OSR tab (so the grid keeps showing it), and still
+    // driveable by tabId — "ending the session" only stops the cap/one-at-a-time tracking.
+    const listed = (await json("tabs_list")).find((t) => t.id === kept);
+    assert.ok(listed, `${kept} should still be open after apps_session_end close:false`);
+    assert.equal(listed.osr, true, "a kept tab stays an OSR tab");
+    assert.match((await json("page_info", { tabId: kept })).url, /kept=1/);
+
+    // Tracking really was released: a fresh batch can start even though the old tab lives on.
+    const next = await json("apps_session_start", { urls: [`${FX}/index.html`] });
+    assert.equal(next.tabIds.length, 1);
+    assert.notEqual(next.tabIds[0], kept);
+
+    // Ending that session must not touch the untracked tab it no longer owns.
+    await ok("apps_session_end", {});
+    assert.ok(
+      (await json("tabs_list")).some((t) => t.id === kept),
+      "apps_session_end closed a tab that was no longer part of the session",
+    );
+    await ok("tabs_close", { id: kept });
   });
 
   await check("cross-tab concurrency: overlapping type/find never clobber another tab's refs", async () => {

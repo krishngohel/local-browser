@@ -471,7 +471,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `profile_set` | Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed. |
 | `profile_suggest_fill` | Match the current tab's form fields (from the last forms() call) to the stored profile by label. Returns { ref, label, suggestedValue, confidence } for fields it's confident about; it never fills anything itself and never guesses for a field with no clear match — review each suggestion (or ask the user) before calling fill_form with the ones you accept. Optionally target a specific tabId. |
 | `apps_session_start` | Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another. |
-| `apps_session_end` | End the current applications grid session. Set close to false to keep the tabs open as regular tabs instead of closing them (default: close them). |
+| `apps_session_end` | End the current applications-session tracking. With close (default true), also closes those tabs. With close: false, the tabs stay open as OSR tabs — still addressable by tabId and still visible in the grid view — they just stop counting toward this session, so a new apps_session_start can open a fresh batch. |
 
 ### Automation and QA (9) — off by default
 
