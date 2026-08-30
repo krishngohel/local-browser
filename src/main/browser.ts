@@ -637,6 +637,8 @@ export class BrowserHub {
     this.thumbs.delete(id);
     this.dialogHooked.delete(id);
     this.dialogs.forget(id);
+    this.tabQueues.delete(id);
+    this.tabTargetIds.delete(id);
     this.order = this.order.filter((x) => x !== id);
     if (tab.incognito) void this.releaseIncognitoIfLast();
     if (this.activeId === id) {
