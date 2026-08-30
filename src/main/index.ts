@@ -23,10 +23,11 @@ import { getOrCreateToken } from "./token";
 import { TestRunner } from "./test-runs";
 import { Recorder } from "./recordings";
 import { Scheduler } from "./scheduler";
-import type { AppSettings, AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, PlayResult, Profile, RecordedAction, TransferPrefs } from "../shared/types";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
 import { getSettings, setSettings } from "./settings";
+import { getProfile, setProfile } from "./profile";
 import { cleanChromeUserAgent } from "./user-agent";
 import { ActivityLog } from "./activity";
 import { History } from "./history";
@@ -433,6 +434,8 @@ function registerIpc(): void {
     broadcast();
     return s;
   });
+  ipcMain.handle("profile:get", () => getProfile());
+  ipcMain.handle("profile:update", (_e, next: Partial<Profile>) => setProfile(next));
   ipcMain.handle("bookmarks:list", () => bookmarks.list());
   ipcMain.handle("bookmarks:add", () => {
     const url = hub.activeUrl();

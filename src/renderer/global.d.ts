@@ -1,4 +1,4 @@
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 declare global {
@@ -44,6 +44,8 @@ declare global {
       setSettings: (open: boolean) => Promise<void>;
       getSettings: () => Promise<AppSettings>;
       updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
+      getProfile: () => Promise<Profile>;
+      updateProfile: (next: Partial<Profile>) => Promise<Profile>;
       toolManifest: () => Promise<ToolManifestEntry[]>;
       setPaused: (p: boolean) => Promise<boolean>;
       clearActivity: () => Promise<void>;

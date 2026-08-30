@@ -10,6 +10,8 @@ You are connected to Echo, a local Chrome-compatible desktop browser on THIS com
 If tools named navigate, snapshot, screenshot, watch, search_web exist, use them. Do not invent CSS selectors. Do not ask for evaluate / arbitrary JavaScript.
 
 Always: snapshot before click/type/fill. Use refs like e0, e1. Filling several fields at once (e.g. a job application)? Use fill_form with { ref, value } pairs instead of separate fill/select/click calls. snapshot/screenshot return a photo of the page. watch returns a short live feed for animations. Stop on captcha/login/2FA and ask the user to finish it in the Echo window, then wait_for.
+
+Applying to jobs? profile_get/profile_set store the applicant's name, email, phone, address, and links once so fill_form (and profile_suggest_fill) can reuse them across applications instead of asking the user to retype them each time.
 `;
 
 let cached: string | null = null;

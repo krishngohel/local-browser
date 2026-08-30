@@ -116,7 +116,7 @@ snapshot                               // photo + refs e0, e1, …
 
 **Hard rule:** `snapshot` immediately before every `click`, `type`, `fill`, or `select`. Refs (`e0`, `e1`) are from the latest snapshot only. Never reuse old refs. Never guess selectors.
 
-Filling several fields at once (a job application, a signup form)? Use `fill_form` (Interaction depth) with a list of `{ ref, value }` pairs instead of separate `fill`/`select`/`click` calls.
+Filling several fields at once (a job application, a signup form)? Use `fill_form` (Interaction depth) with a list of `{ ref, value }` pairs instead of separate `fill`/`select`/`click` calls. `profile_get`/`profile_set` (Sessions and state) store the applicant's name, email, phone, address, and links once so you don't have to ask the user to retype them for every application.
 
 ```
 click({ ref: "e3" })
@@ -249,6 +249,7 @@ clear_site_data                        // one origin, or everything
 history_search                         // Echo's own browsing history
 downloads_list
 bookmarks                              // list, add, remove
+profile_get / profile_set              // stored applicant name/email/phone/address/links, for fill_form/profile_suggest_fill
 ```
 
 For a throwaway session, prefer `tabs_new({ incognito: true })`: incognito tabs share one memory-only cookie jar that is cleared when the last of them closes, keep nothing on disk, and write no history.
@@ -350,7 +351,7 @@ If the photo shows captcha, consent, login, or 2FA:
 
 ---
 
-## 6. Every tool (71)
+## 6. Every tool (73)
 
 Generated from Echo's tool manifest. Groups marked **off by default** only appear once the user turns them on in Settings → Transfers and reconnects the client. `evaluate` needs its own switch on the same page, on top of its group.
 
@@ -452,7 +453,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `evaluate` | Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers. |
 | `fill_form` | Fill several fields from the latest snapshot/forms call in one round-trip: { ref, value } pairs. Text/textarea fields are typed, <select> fields choose the option matching value, checkboxes/radios are clicked only when value is truthy (already-checked boxes are not unchecked). Returns a per-field { ref, ok, error? } result so one bad ref does not block the rest. Optionally target a specific tabId. |
 
-### Sessions and state (9) — off by default
+### Sessions and state (11) — off by default
 
 | Tool | What it does |
 | --- | --- |
@@ -465,6 +466,8 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `history_search` | Search Echo's browsing history by URL or title. |
 | `downloads_list` | List files downloaded in this session and the downloads folder. |
 | `bookmarks` | List, add, or remove bookmarks (add uses the current page when url is omitted). |
+| `profile_get` | Read the stored applicant profile (name, email, phone, address, links). Empty fields mean nothing is stored yet. |
+| `profile_set` | Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed. |
 
 ### Automation and QA (9) — off by default
 

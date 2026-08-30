@@ -102,6 +102,7 @@
             <button class="nav-item" data-section="testing" data-icon="check"><span class="nav-label">Testing</span></button>
             <button class="nav-item" data-section="appearance" data-icon="palette"><span class="nav-label">Appearance</span></button>
             <button class="nav-item" data-section="system" data-icon="monitor"><span class="nav-label">System</span></button>
+            <button class="nav-item" data-section="profile" data-icon="user"><span class="nav-label">Profile</span></button>
             <button class="nav-item" data-section="about" data-icon="info"><span class="nav-label">About</span></button>
             <button class="nav-item" data-section="privacy" data-icon="lock"><span class="nav-label">Privacy</span></button>
             <button class="nav-item" data-section="terms" data-icon="doc"><span class="nav-label">Terms</span></button>
@@ -478,6 +479,75 @@
               </div>
               <button class="chrome-btn" id="open-data">Open folder</button>
             </div>
+            </div>
+          </section>
+          <section id="section-profile" class="card-list" hidden>
+            <h2>Profile</h2>
+            <p class="help">Stored on this computer. fill_form and profile_suggest_fill reuse these fields to fill job applications faster. Resumes and cover letters are not stored here — attach those with the file upload tool instead.</p>
+            <div class="panel">
+            <div class="card stack">
+              <div class="profile-grid">
+                <div class="profile-field">
+                  <label for="profile-fullName">Full name</label>
+                  <input class="text-input" id="profile-fullName" type="text" autocomplete="name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-firstName">First name</label>
+                  <input class="text-input" id="profile-firstName" type="text" autocomplete="given-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-lastName">Last name</label>
+                  <input class="text-input" id="profile-lastName" type="text" autocomplete="family-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-email">Email</label>
+                  <input class="text-input" id="profile-email" type="email" autocomplete="email" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-phone">Phone</label>
+                  <input class="text-input" id="profile-phone" type="tel" autocomplete="tel" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-addressLine1">Address line 1</label>
+                  <input class="text-input" id="profile-addressLine1" type="text" autocomplete="address-line1" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-addressLine2">Address line 2</label>
+                  <input class="text-input" id="profile-addressLine2" type="text" autocomplete="address-line2" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-city">City</label>
+                  <input class="text-input" id="profile-city" type="text" autocomplete="address-level2" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-state">State / province</label>
+                  <input class="text-input" id="profile-state" type="text" autocomplete="address-level1" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-zip">ZIP / postal code</label>
+                  <input class="text-input" id="profile-zip" type="text" autocomplete="postal-code" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-country">Country</label>
+                  <input class="text-input" id="profile-country" type="text" autocomplete="country-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-linkedin">LinkedIn</label>
+                  <input class="text-input" id="profile-linkedin" type="text" autocomplete="off" spellcheck="false" placeholder="https://linkedin.com/in/…" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-portfolio">Portfolio</label>
+                  <input class="text-input" id="profile-portfolio" type="text" autocomplete="off" spellcheck="false" placeholder="https://…" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-github">GitHub</label>
+                  <input class="text-input" id="profile-github" type="text" autocomplete="off" spellcheck="false" placeholder="https://github.com/…" />
+                </div>
+              </div>
+            </div>
+            </div>
+            <div class="actions">
+              <button class="chrome-btn filled" id="profile-save">Save</button>
             </div>
           </section>
           <section id="section-about" class="card-list" hidden>

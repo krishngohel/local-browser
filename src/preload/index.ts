@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 contextBridge.exposeInMainWorld("lb", {
@@ -43,6 +43,8 @@ contextBridge.exposeInMainWorld("lb", {
   setSettings: (open: boolean) => ipcRenderer.invoke("settings:set", open),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("settings:get"),
   updateSettings: (next: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("settings:update", next),
+  getProfile: (): Promise<Profile> => ipcRenderer.invoke("profile:get"),
+  updateProfile: (next: Partial<Profile>): Promise<Profile> => ipcRenderer.invoke("profile:update", next),
   toolManifest: (): Promise<ToolManifestEntry[]> => ipcRenderer.invoke("tools:manifest"),
   setPaused: (p: boolean): Promise<boolean> => ipcRenderer.invoke("activity:pause", p),
   clearActivity: () => ipcRenderer.invoke("activity:clear"),

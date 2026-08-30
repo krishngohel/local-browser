@@ -94,6 +94,27 @@ export type AppSettings = {
   humanPacing: boolean;
 };
 
+/**
+ * Stable applicant identity fields, reused by fill_form (and future auto-fill) across job
+ * applications. Resumes/cover letters are NOT stored here — those stay on upload_file.
+ */
+export type Profile = {
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  linkedin: string;
+  portfolio: string;
+  github: string;
+};
+
 export type ActivityEntry = {
   id: number;
   tool: string;

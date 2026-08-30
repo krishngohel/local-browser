@@ -224,6 +224,16 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
     group: "toolsState",
     description: "List, add, or remove bookmarks (add uses the current page when url is omitted).",
   },
+  {
+    name: "profile_get",
+    group: "toolsState",
+    description: "Read the stored applicant profile (name, email, phone, address, links). Empty fields mean nothing is stored yet.",
+  },
+  {
+    name: "profile_set",
+    group: "toolsState",
+    description: "Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed.",
+  },
 
   // Automation and QA
   {

@@ -1,4 +1,4 @@
-import type { AppSettings, AppState } from "../../shared/types";
+import type { AppSettings, AppState, Profile } from "../../shared/types";
 import type { ToolGroup, ToolManifestEntry } from "../../shared/tool-manifest";
 import { GROUP_LABELS, TOOL_MANIFEST } from "../../shared/tool-manifest";
 import { formatMs, h, svgIcon } from "./dom";
@@ -28,6 +28,24 @@ let manifest: ToolManifestEntry[] | null = null;
 let manifestLoading = false;
 let toolsKey = "";
 let activityKey = "";
+
+/** The 14 stable applicant-identity fields, in the order they appear in the Profile section. */
+const PROFILE_FIELDS: (keyof Profile)[] = [
+  "fullName",
+  "firstName",
+  "lastName",
+  "email",
+  "phone",
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "state",
+  "zip",
+  "country",
+  "linkedin",
+  "portfolio",
+  "github",
+];
 
 /**
  * The shell's overlay teardown, injected by `main.ts`. Passing it in rather than importing it
@@ -190,6 +208,8 @@ export function initSettings(
   homeUrl.addEventListener("keydown", (event) => {
     if (event.key === "Enter") saveHomeUrl(homeUrl);
   });
+
+  document.getElementById("profile-save")!.addEventListener("click", () => void saveProfile());
 
   const autostart = document.getElementById("autostart") as HTMLInputElement;
   if (window.lb) {
@@ -483,6 +503,35 @@ function saveHomeUrl(input: HTMLInputElement): void {
   void window.lb.updateSettings({ homeUrl: value }).then(() => toast("Home page saved", "ok"));
 }
 
+/* ------------------------------------------------------------------ profile */
+
+/** Fetched fresh each time the Profile section is opened, rather than pushed on every state event. */
+function populateProfile(profile: Profile): void {
+  for (const field of PROFILE_FIELDS) {
+    const input = document.getElementById(`profile-${field}`) as HTMLInputElement | null;
+    // Never overwrite a field the user is actively typing into.
+    if (input && document.activeElement !== input) input.value = profile[field];
+  }
+}
+
+async function loadProfile(): Promise<void> {
+  if (!window.lb) return;
+  const profile = await window.lb.getProfile();
+  populateProfile(profile);
+}
+
+async function saveProfile(): Promise<void> {
+  if (!window.lb) return;
+  const next: Partial<Profile> = {};
+  for (const field of PROFILE_FIELDS) {
+    const input = document.getElementById(`profile-${field}`) as HTMLInputElement | null;
+    if (input) next[field] = input.value.trim();
+  }
+  const saved = await window.lb.updateProfile(next);
+  populateProfile(saved);
+  toast("Profile saved", "ok");
+}
+
 /* ----------------------------------------------------------------- search */
 
 /**
@@ -710,6 +759,9 @@ export function showSection(id: string): void {
     renderActivity(latest);
     renderAppearance(latest);
   }
+  // Profile isn't part of AppState (it's not broadcast), so fetch it fresh on the way in
+  // instead of redrawing on every state tick.
+  if (target === "profile") void loadProfile();
 }
 
 export async function fillSnippets(): Promise<void> {

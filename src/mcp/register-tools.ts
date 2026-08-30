@@ -11,6 +11,7 @@ import { registerRead } from "./tools/read";
 import { registerInteract } from "./tools/interact";
 import { registerState } from "./tools/state";
 import { registerQa } from "./tools/qa";
+import { registerProfile } from "./tools/profile";
 
 export type { ToolDeps } from "./tools/_helpers";
 export { refreshToolAvailability } from "./tools/_helpers";
@@ -37,4 +38,5 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   registerInteract(server, deps);
   registerState(server, deps);
   registerQa(server, deps);
+  registerProfile(server, deps);
 }

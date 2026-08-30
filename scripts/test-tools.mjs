@@ -5,7 +5,7 @@
  *
  * Starts the fixture server and a real Echo (Electron) on a throwaway profile with every
  * tool group switched on, connects an MCP client over Streamable HTTP, and calls every one
- * of the 71 tools at least once. `search_web` is the single exception: it drives live
+ * of the 73 tools at least once. `search_web` is the single exception: it drives live
  * Google, which has no place in a test that must pass offline.
  *
  * Failures are collected rather than thrown, so one broken tool does not hide the rest; the
@@ -31,7 +31,7 @@ const CDP_PORT = 9333;
 const MCP_PORT_PREFERRED = 18931;
 const MCP_PORT_SPAN = 10;
 /** Every tool Echo registers with all groups on and `evaluate` enabled. */
-const TOTAL_TOOLS = 71;
+const TOTAL_TOOLS = 73;
 /** The one tool the e2e run must not call: it hits live Google. */
 const SKIPPED = new Set(["search_web"]);
 
@@ -465,6 +465,13 @@ try {
     assert.equal((await json("bookmarks", { action: "list" })).length, 0);
     const downloads = await json("downloads_list");
     assert.ok(typeof downloads.folder === "string" && Array.isArray(downloads.downloads));
+  });
+
+  await check("profile_set stores fields and profile_get reads them back", async () => {
+    await ok("profile_set", { fullName: "Ada Lovelace", email: "ada@example.com" });
+    const profile = await json("profile_get");
+    assert.equal(profile.fullName, "Ada Lovelace");
+    assert.equal(profile.email, "ada@example.com");
   });
 
   await check("tabs_new incognito + tabs_list + tabs_select + tabs_close", async () => {
