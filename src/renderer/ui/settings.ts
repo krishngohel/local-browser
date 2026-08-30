@@ -310,6 +310,7 @@ export function renderSettings(next: AppState): void {
   renderTools(next);
   renderActivity(next);
   renderAppearance(next);
+  renderProfile(next);
 }
 
 /* ------------------------------------------------------------------ tools */
@@ -505,19 +506,21 @@ function saveHomeUrl(input: HTMLInputElement): void {
 
 /* ------------------------------------------------------------------ profile */
 
-/** Fetched fresh each time the Profile section is opened, rather than pushed on every state event. */
-function populateProfile(profile: Profile): void {
+/**
+ * Profile lives in `AppState` (like `settings`), so it redraws on every broadcast the same way
+ * `renderAppearance` keeps `homeUrl` fresh — including a broadcast triggered by an assistant's
+ * `profile_set` call while this panel is open (every tool call fires a broadcast via
+ * `activity.setOnChange`). Without this, the on-screen fields would go stale the moment an
+ * assistant writes a profile mid-application-fill, and a later Save would silently revert that
+ * write with whatever was on screen when the panel was opened.
+ */
+function renderProfile(next: AppState): void {
+  if (!sectionVisible("profile")) return;
   for (const field of PROFILE_FIELDS) {
     const input = document.getElementById(`profile-${field}`) as HTMLInputElement | null;
     // Never overwrite a field the user is actively typing into.
-    if (input && document.activeElement !== input) input.value = profile[field];
+    if (input && document.activeElement !== input) input.value = next.profile[field];
   }
-}
-
-async function loadProfile(): Promise<void> {
-  if (!window.lb) return;
-  const profile = await window.lb.getProfile();
-  populateProfile(profile);
 }
 
 async function saveProfile(): Promise<void> {
@@ -527,8 +530,7 @@ async function saveProfile(): Promise<void> {
     const input = document.getElementById(`profile-${field}`) as HTMLInputElement | null;
     if (input) next[field] = input.value.trim();
   }
-  const saved = await window.lb.updateProfile(next);
-  populateProfile(saved);
+  await window.lb.updateProfile(next);
   toast("Profile saved", "ok");
 }
 
@@ -753,15 +755,13 @@ export function showSection(id: string): void {
   }
   const content = document.querySelector(".settings-content");
   if (content) content.scrollTop = 0;
-  // The three data sections skip their draw while hidden, so they redraw on the way in.
+  // These sections skip their draw while hidden, so they redraw on the way in.
   if (latest) {
     renderTools(latest);
     renderActivity(latest);
     renderAppearance(latest);
+    renderProfile(latest);
   }
-  // Profile isn't part of AppState (it's not broadcast), so fetch it fresh on the way in
-  // instead of redrawing on every state tick.
-  if (target === "profile") void loadProfile();
 }
 
 export async function fillSnippets(): Promise<void> {

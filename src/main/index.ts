@@ -116,6 +116,7 @@ function getState(): AppState {
     toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
     activity: activity.state(),
     settings: getSettings(),
+    profile: getProfile(),
     bookmarks: { count: bookmarks.list().length, activeBookmarked: bookmarks.has(hub.activeUrl()) },
   };
 }

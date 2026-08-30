@@ -168,6 +168,10 @@ export type AppState = {
   toolCount: number;
   activity: ActivityState;
   settings: AppSettings;
+  /** Kept in the broadcast state (like `settings`) so an assistant's profile_set while
+   *  Settings → Profile is open reaches the open panel the same way any other live edit does,
+   *  instead of the panel serving stale fields that a later Save would revert. */
+  profile: Profile;
   bookmarks: { count: number; activeBookmarked: boolean };
 };
 

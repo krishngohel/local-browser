@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import electronPath from "electron";
+import { chromium } from "playwright-core";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE_PORT = 18999;
@@ -271,6 +272,20 @@ try {
   await ok("navigate", { url: `${FX}/index.html` });
   await waitFor(async () => !(await portFree(CDP_PORT)), 30000, "Echo's CDP port to open");
 
+  // Same CDP port the tool implementations attach Playwright to for tab automation, connected
+  // to directly here so a UI-level check (Settings > Profile) can drive Echo's own chrome
+  // window rather than just calling MCP tools. `connectOverCDP` attaches to the app already
+  // spawned above; closing it later only disconnects, it does not touch the running Echo.
+  const cdp = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`);
+  const chromeWindow = () => {
+    for (const ctx of cdp.contexts()) {
+      for (const p of ctx.pages()) {
+        if (/renderer[\\/]index\.html/.test(p.url())) return p;
+      }
+    }
+    throw new Error("Echo's chrome window is not among the CDP targets");
+  };
+
   await check("navigate + page_info", async () => {
     await ok("navigate", { url: `${FX}/index.html` });
     const info = await json("page_info");
@@ -472,6 +487,49 @@ try {
     const profile = await json("profile_get");
     assert.equal(profile.fullName, "Ada Lovelace");
     assert.equal(profile.email, "ada@example.com");
+  });
+
+  await check("Settings > Profile stays fresh across a concurrent profile_set (no stale Save clobber)", async () => {
+    const win = chromeWindow();
+    // openSettings() (settings.ts) is what normally unhides this panel, reached via the app
+    // menu / Ctrl+, which route through Electron's main-process input pipeline — unreachable
+    // from a page-level CDP session. Flip the one attribute it sets to gate visibility, then
+    // drive everything else (section switching, save, the render pipeline) through the real
+    // click handlers and `onState` listener already running in the page.
+    await win.evaluate(() => {
+      document.getElementById("settings").hidden = false;
+    });
+    await win.click('.nav-item[data-section="profile"]');
+    await win.waitForSelector("#profile-fullName", { state: "visible" });
+
+    // Baseline: fill and save from the UI, like a user filling out their own profile.
+    await win.fill("#profile-fullName", "Grace Hopper");
+    await win.fill("#profile-email", "grace@example.com");
+    await win.click("#profile-save");
+    await win.waitForTimeout(300);
+    assert.equal((await json("profile_get")).fullName, "Grace Hopper");
+
+    // Simulate the assistant writing new values mid-application-fill while the panel is still
+    // open — a plain profile_set call, no UI interaction.
+    await ok("profile_set", { fullName: "Katherine Johnson", email: "katherine@example.com" });
+
+    // The open panel must pick this up live (profile is part of the AppState broadcast, and
+    // every tool call triggers one via activity.setOnChange) rather than keep showing the
+    // stale baseline.
+    await win.waitForFunction(
+      () => document.getElementById("profile-fullName")?.value === "Katherine Johnson",
+      undefined,
+      { timeout: 5000 },
+    );
+    assert.equal(await win.inputValue("#profile-email"), "katherine@example.com");
+
+    // Clicking Save now — with the panel showing the freshest values, not what was on screen
+    // when it was opened — must not revert the assistant's concurrent write.
+    await win.click("#profile-save");
+    await win.waitForTimeout(300);
+    const after = await json("profile_get");
+    assert.equal(after.fullName, "Katherine Johnson", "Save clobbered a concurrent profile_set");
+    assert.equal(after.email, "katherine@example.com", "Save clobbered a concurrent profile_set");
   });
 
   await check("tabs_new incognito + tabs_list + tabs_select + tabs_close", async () => {
@@ -699,6 +757,7 @@ try {
     console.log(`     ${called.size} of ${names.length} tools called (skipped: ${[...SKIPPED].join(", ")})`);
   });
 
+  await cdp.close();
   await client.close();
 } catch (error) {
   console.error(`\nfatal: ${error instanceof Error ? error.stack : String(error)}`);
