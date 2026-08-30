@@ -383,8 +383,11 @@ export class BrowserHub {
         this.activeId && this.tabs.has(this.activeId)
           ? this.activeId
           : attachable[attachable.length - 1];
-      if (id) this.selectTab(id, { record: false });
-      else this.createTab(this.homeUrl, { record: false });
+      // The grid can be open behind Settings, in which case nothing attaches yet — keep the
+      // pointer honest anyway so `syncGridVisibility` attaches the right tab when it closes.
+      if (id) {
+        if (!this.attachTab(id, { record: false })) this.activeId = id;
+      } else this.createTab(this.homeUrl, { record: false });
     }
     this.onChange();
   }
@@ -664,8 +667,19 @@ export class BrowserHub {
     this.attachListeners(tab);
     this.tabs.set(id, tab);
     this.order.push(id);
-    this.window.addBrowserView(view);
-    this.selectTab(id, { record: false });
+    if (this.settingsOpen || this.gridOpen) {
+      // Nothing on screen to attach to: Settings covers the content area and the grid replaces
+      // it, so both detach every BrowserView, and `layout()` refuses to size one while either
+      // is up. Attaching here would leave an unpositioned view sitting at its default bounds
+      // until the grid closed. Move the pointer directly instead — the same thing `closeTab`
+      // does — so a freshly created tab is still the active one, which the rest of the app
+      // universally assumes; `setSettingsOpen(false)` and `syncGridVisibility` attach whatever
+      // `activeId` names once there is a content area again.
+      this.activeId = id;
+    } else {
+      this.window.addBrowserView(view);
+      this.attachTab(id, { record: false });
+    }
     const target = normalizeUrl(url ?? this.homeUrl);
     if (opts?.record !== false) this.rec?.record({ type: "newTab", url: target });
     void view.webContents.loadURL(target);
@@ -831,10 +845,54 @@ export class BrowserHub {
     return this.createTab(url, opts);
   }
 
+  /**
+   * Focus a tab on behalf of someone who is told whether it worked — the `tabs_select` tool
+   * and recording replay. Refuses loudly whenever the target cannot actually be shown, so a
+   * caller is never reported success while the active tab silently stayed put. That matters
+   * most during an applications session: every later tabId-omitting call would otherwise act
+   * on a tab the assistant no longer believes is active.
+   *
+   * The order of the checks is deliberate. `requireTab` and the OSR refusal come first so
+   * both are reachable while the grid is open — which is exactly when someone is most likely
+   * to try selecting an OSR tab, and the grid is open whenever any OSR tab exists.
+   *
+   * Internal focus bookkeeping — a tab just created, a replacement picked after a close,
+   * Ctrl+Tab, a click in the tab strip — goes through `attachTab` instead: those callers have
+   * their own handling for the Settings/grid case and must not throw at a keystroke.
+   */
   selectTab(id: string, opts?: { record?: boolean }): void {
-    if (this.settingsOpen || this.gridOpen) return;
     const tab = this.requireTab(id);
-    if (tab.osr) throw new Error("OSR tabs render in the grid, not the main view.");
+    if (tab.osr) {
+      throw new Error(
+        `${id} renders in the applications grid, not the main view. Drive it by tabId, or end the session with apps_session_end first.`,
+      );
+    }
+    if (this.gridOpen) {
+      throw new Error(
+        "An applications grid session is open; address tabs by tabId, or end the session first.",
+      );
+    }
+    if (this.settingsOpen) return;
+    this.attachTabNow(tab, opts);
+  }
+
+  /**
+   * Best-effort focus: makes `id` the active tab and attaches its view when that is possible,
+   * and does nothing at all when it is not — Settings up, the grid showing, an OSR tab, or an
+   * id that is already gone. Returns whether the tab really became the attached view, so a
+   * caller that needs `activeId` moved regardless can do that part itself; `createTab` and
+   * `closeTab` both do, because a stale `activeId` outlives the grid session that caused it.
+   */
+  attachTab(id: string, opts?: { record?: boolean }): boolean {
+    const tab = this.tabs.get(id);
+    if (!tab || tab.osr || this.settingsOpen || this.gridOpen) return false;
+    this.attachTabNow(tab, opts);
+    return true;
+  }
+
+  /** The switch itself, once the caller has decided this tab can and should be shown. */
+  private attachTabNow(tab: Tab, opts?: { record?: boolean }): void {
+    const id = tab.id;
     const switched = this.activeId !== id;
     // Last chance to photograph the outgoing tab: once its view is detached below,
     // capturePage() never settles.
@@ -908,14 +966,14 @@ export class BrowserHub {
       const remaining = this.attachableOrder();
       const next = remaining[remaining.length - 1];
       if (this.settingsOpen || this.gridOpen) {
-        // `selectTab` does nothing while Settings is up or the grid is showing, which would
+        // Nothing can be attached while Settings is up or the grid is showing, which would
         // leave `activeId` pointing at the tab just deleted. Move the pointer now, without
         // touching the views (they are all detached anyway) — `setSettingsOpen(false)` or
         // `syncGridVisibility` reattaching once the grid closes will pick up the right one.
         this.activeId = next ?? null;
         this.onChange();
       } else if (next) {
-        this.selectTab(next, { record: false });
+        this.attachTab(next, { record: false });
       } else {
         this.activeId = null;
         this.onChange();
@@ -964,7 +1022,8 @@ export class BrowserHub {
    * The tabs the user can actually switch to: `order` minus OSR tabs, which have no attached
    * view and are watched in the grid instead. Every path that picks a tab to *attach* —
    * Ctrl+Tab, Ctrl+1..9, and closing the active tab — must choose from this rather than from
-   * `order`, or it can land on an OSR tab and hit `selectTab`'s refusal.
+   * `order`, or it can land on an OSR tab, which `selectTab` refuses and `attachTab` declines
+   * to attach, leaving the window with no view.
    *
    * `listTabs` deliberately still reports every tab, OSR included: the assistant addresses
    * them by tabId like any other.
@@ -981,13 +1040,13 @@ export class BrowserHub {
     if (at < 0) return;
     const n = order.length;
     const next = (((at + delta) % n) + n) % n;
-    this.selectTab(order[next], { record: false });
+    this.attachTab(order[next], { record: false });
   }
 
   /** Selects the tab in slot `index`. Out-of-range slots do nothing, as in Chrome. */
   selectTabIndex(index: number): void {
     const id = this.attachableOrder()[index];
-    if (id && id !== this.activeId) this.selectTab(id, { record: false });
+    if (id && id !== this.activeId) this.attachTab(id, { record: false });
   }
 
   tabCount(): number {
@@ -1008,7 +1067,7 @@ export class BrowserHub {
   /**
    * 320px-wide data URL of the tab's page, or "" when none can be produced. Never rejects.
    *
-   * Only the active tab can be captured live: `selectTab` detaches every other
+   * Only the active tab can be captured live: attaching one detaches every other
    * BrowserView from the window, and `capturePage()` on a detached view never
    * settles (measured: still pending after 15 s). Background tabs are therefore
    * served from the cache, which is filled while they are on screen — on
@@ -1204,9 +1263,29 @@ export class BrowserHub {
     };
   }
 
+  /**
+   * Refuses a capture that could only ever time out.
+   *
+   * While the grid is showing, every ordinary tab's `BrowserView` is detached from the window
+   * (`syncGridVisibility`), and a detached view produces no compositor frames: Playwright's
+   * screenshot hangs on its 8 s timeout and Electron's `capturePage()` never settles either
+   * (the same measurement `tabThumbnail` documents). Measured end to end before this guard:
+   * `screenshot` took 14.1 s and `watch` 15.0 s to fail with a bare "Timed out after 6000ms".
+   *
+   * OSR tabs are exempt — their hidden window has its own compositor, so capturing one works
+   * (measured: 447 ms) and is the right way to see a session tab.
+   */
+  private refuseDetachedCapture(tab: Tab, what: string): void {
+    if (!this.gridOpen || tab.osr) return;
+    throw new Error(
+      `Can't ${what} a regular tab while an applications grid session is open — end the session with apps_session_end first, or target one of the session's own tabIds.`,
+    );
+  }
+
   async capturePng(opts?: { fullPage?: boolean; reveal?: boolean; tabId?: string }): Promise<Buffer> {
     const tab = this.resolveTab(opts?.tabId);
-    if (tab.id !== this.activeId) this.selectTab(tab.id);
+    this.refuseDetachedCapture(tab, "screenshot");
+    if (tab.id !== this.activeId) this.attachTab(tab.id);
     if (opts?.reveal !== false) await this.revealForCapture();
     const page = await this.playwrightPage(tab);
     if (page) {
@@ -1235,12 +1314,13 @@ export class BrowserHub {
     frames: { tMs: number; jpeg: Buffer; width: number; height: number }[];
   }> {
     const tab = this.resolveTab(opts?.tabId);
+    this.refuseDetachedCapture(tab, "live feed");
     const durationMs = Math.min(6000, Math.max(800, opts?.durationMs ?? 2500));
     const maxFrames = Math.min(12, Math.max(4, opts?.maxFrames ?? 8));
     if (this.watchingTabs.has(tab.id)) throw new Error("Already watching this tab. Wait for the current live feed to finish.");
     this.watchingTabs.add(tab.id);
     try {
-      if (tab.id !== this.activeId) this.selectTab(tab.id);
+      if (tab.id !== this.activeId) this.attachTab(tab.id);
       await this.revealForCapture();
       const collected = await this.watchViaCdp(tab, durationMs);
       const fallback = collected.length === 0 ? await this.watchViaPoll(tab, durationMs, maxFrames) : collected;
@@ -2397,8 +2477,9 @@ export class BrowserHub {
   layout(): void {
     if (!this.window || !this.activeId || this.settingsOpen || this.gridOpen) return;
     const tab = this.tabs.get(this.activeId);
-    // `selectTab` refuses OSR tabs, so the active tab is always an attached BrowserView; the
-    // guard is here so the cast below stays honest if that ever changes.
+    // Neither `selectTab` nor `attachTab` nor `createTab` ever makes an OSR tab active, so the
+    // active tab is always a BrowserView; the guard is here so the cast below stays honest if
+    // that ever changes.
     if (!tab || tab.osr) return;
     const view = tab.view as BrowserView;
     const { width, height } = this.window.getContentBounds();
@@ -2895,7 +2976,7 @@ export class BrowserHub {
   ): Promise<void> {
     const target = tab.id === this.activeId ? await this.pwTarget(tab) : null;
     // `pwTarget` above awaits (Playwright connection, a CDP target lookup) — long enough for a
-    // different tab's `capturePng`/`watch` to call `selectTab` and detach this one in the
+    // different tab's `capturePng`/`watch` to attach itself and detach this one in the
     // meantime. Re-check right before acting rather than trusting the decision made before that
     // await: a Playwright action started against a tab that has since gone inactive hangs or
     // silently no-ops exactly like the case this branch exists to avoid (see `withPage`'s doc

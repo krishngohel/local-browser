@@ -16,7 +16,10 @@ export function registerSee(server: McpServer, deps: ToolDeps): void {
       try {
         const view = await hub.captureForModel({ fullPage: Boolean(fullPage), tabId });
         const dest = hub.saveCapture(view.png);
-        const caption = `Photo of ${hub.activeUrl()} (${view.width}×${view.height}). Saved PNG to ${dest}`;
+        // The target tab may not be the active one, so the caption reports its own URL rather
+        // than assuming the photo came from whatever tab happens to be on screen.
+        const targetUrl = tabId ? hub.listTabs().find((t) => t.id === tabId)?.url ?? hub.activeUrl() : hub.activeUrl();
+        const caption = `Photo of ${targetUrl} (${view.width}×${view.height}). Saved PNG to ${dest}`;
         if (!getTransferPrefs().screenshotPhoto) {
           return text(`${caption}\n\n(Screenshot image off in Echo Settings → Transfers. File saved locally.)`);
         }

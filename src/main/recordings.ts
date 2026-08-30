@@ -226,10 +226,17 @@ export class Recorder {
         await sleep(350);
         return;
       case "selectTab": {
-        const tabs = hub.listTabs();
+        // Only tabs that can actually be attached are candidates: an applications-grid tab can
+        // hold the recorded URL without ever being showable, and matching one would turn a
+        // replay into an error for no reason.
+        const tabs = hub.listTabs().filter((tab) => !tab.osr);
         const match =
           tabs.find((tab) => tab.url === action.url) ||
           (action.title ? tabs.find((tab) => tab.title === action.title) : undefined);
+        // No match is a step this recording cannot reproduce here, and has always been skipped.
+        // A match that refuses (a grid session is open, so nothing can be attached) is
+        // different: every later step would run against the wrong tab, so let it stop the run
+        // — `playSteps` turns it into "Stopped at step N (selectTab): …" rather than a crash.
         if (match) hub.selectTab(match.id, { record: false });
         await sleep(150);
         return;

@@ -363,7 +363,10 @@ function registerIpc(): void {
     hub.setChromeHeight(px);
   });
   ipcMain.handle("tabs:select", (_e, id: string) => {
-    hub.selectTab(id);
+    // `attachTab`, not `selectTab`: a click in the tab strip has nowhere to show an error, and
+    // rejecting the invoke would only surface as an unhandled rejection in the renderer. It
+    // stays a no-op while Settings or the grid covers the content area, as it always has.
+    hub.attachTab(id);
     broadcast();
   });
   ipcMain.handle("tabs:close", (_e, id: string) => {
