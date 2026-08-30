@@ -171,18 +171,21 @@ export function registerRead(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "captcha_check",
-    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. Optionally target a specific tabId (see tabs_list).",
+    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these. If visible, ask the user to solve it in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list).",
     { tabId: z.string().optional() },
     async ({ tabId }) => {
       try {
         const found = await hub.detectCaptcha(tabId);
         if (!found.present) return text(JSON.stringify({ present: false }));
+        const action = found.visible
+          ? "Ask the user to solve it in the Echo window, then continue. Echo does not solve CAPTCHAs."
+          : "This is invisible/score-based, not a puzzle to solve. Don't click the flagged action yourself — call hover on its ref so the cursor points at it, ask the user to click it, then wait_for the result.";
         return text(
           JSON.stringify({
             present: true,
             kind: found.kind,
             visible: found.visible,
-            action: "Ask the user to solve it in the Echo window, then continue. Echo does not solve CAPTCHAs.",
+            action,
           }),
         );
       } catch (e) {

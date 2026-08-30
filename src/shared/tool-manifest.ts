@@ -174,7 +174,7 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   },
   { name: "html", group: "toolsRead", description: "Outer HTML of the document or of one element by ref. Optionally target a specific tabId (see tabs_list). Capped at 50,000 chars." },
   { name: "pdf_text", group: "toolsRead", description: "Text of the current PDF, or of the page printed to PDF. Optionally target a specific tabId (see tabs_list)." },
-  { name: "captcha_check", group: "toolsRead", description: "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. Optionally target a specific tabId (see tabs_list)." },
+  { name: "captcha_check", group: "toolsRead", description: "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these. If visible, ask the user to solve it in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list)." },
 
   // Interaction depth
   { name: "hover", group: "toolsInteract", description: "Hover an element by ref (opens menus, shows tooltips)." },
