@@ -5,7 +5,7 @@
  *
  * Starts the fixture server and a real Echo (Electron) on a throwaway profile with every
  * tool group switched on, connects an MCP client over Streamable HTTP, and calls every one
- * of the 73 tools at least once. `search_web` is the single exception: it drives live
+ * of the 74 tools at least once. `search_web` is the single exception: it drives live
  * Google, which has no place in a test that must pass offline.
  *
  * Failures are collected rather than thrown, so one broken tool does not hide the rest; the
@@ -32,7 +32,7 @@ const CDP_PORT = 9333;
 const MCP_PORT_PREFERRED = 18931;
 const MCP_PORT_SPAN = 10;
 /** Every tool Echo registers with all groups on and `evaluate` enabled. */
-const TOTAL_TOOLS = 73;
+const TOTAL_TOOLS = 74;
 /** The one tool the e2e run must not call: it hits live Google. */
 const SKIPPED = new Set(["search_web"]);
 
@@ -487,6 +487,24 @@ try {
     const profile = await json("profile_get");
     assert.equal(profile.fullName, "Ada Lovelace");
     assert.equal(profile.email, "ada@example.com");
+  });
+
+  await check("profile_suggest_fill matches fixture form fields to the stored profile without filling anything", async () => {
+    await ok("profile_set", { firstName: "Ada", email: "ada@example.com" });
+    await ok("navigate", { url: `${FX}/forms.html` });
+    const suggestions = await json("profile_suggest_fill");
+    assert.ok(Array.isArray(suggestions), `expected an array of suggestions: ${JSON.stringify(suggestions)}`);
+    assert.ok(
+      suggestions.some((s) => s.suggestedValue === "Ada" || s.suggestedValue === "ada@example.com"),
+      `no suggestion matched the stored profile: ${JSON.stringify(suggestions)}`,
+    );
+    // A suggestion is not a fill: the underlying inputs must still be untouched.
+    const shown = await ok("get_text");
+    assert.ok(!shown.text.includes("Ada"), "profile_suggest_fill must not type into the form");
+    const after = await json("forms");
+    const fields = after[0].fields;
+    assert.equal(fields.find((f) => f.name === "firstName")?.value, "");
+    assert.equal(fields.find((f) => f.name === "email")?.value, "");
   });
 
   await check("Settings > Profile stays fresh across a concurrent profile_set (no stale Save clobber)", async () => {

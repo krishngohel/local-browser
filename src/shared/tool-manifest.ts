@@ -234,6 +234,11 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
     group: "toolsState",
     description: "Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed.",
   },
+  {
+    name: "profile_suggest_fill",
+    group: "toolsState",
+    description: "Match the current tab's form fields (from the last forms() call) to the stored profile by label. Returns { ref, label, suggestedValue, confidence } for fields it's confident about; it never fills anything itself and never guesses for a field with no clear match — review each suggestion (or ask the user) before calling fill_form with the ones you accept. Optionally target a specific tabId.",
+  },
 
   // Automation and QA
   {
