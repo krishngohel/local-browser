@@ -14,6 +14,10 @@ type HubInternals = {
   tabs: Map<string, FakeTab>;
   tabQueues: Map<string, Promise<unknown>>;
   tabTargetIds: Map<string, string>;
+  order: string[];
+  activeId: string | null;
+  gridOpen: boolean;
+  onChange: () => void;
 };
 
 /**
@@ -24,6 +28,10 @@ type HubInternals = {
  * private `withTab`, not registered as an MCP tool, so it is inert in production. The closeTab
  * cleanup test below reaches into `tabQueues`/`tabTargetIds` the same way, rather than adding a
  * second test-only public method just to read two private maps.
+ *
+ * `order` is populated too (not just `tabs`) because `closeTab`'s active-tab-replacement branch
+ * calls the private `attachableOrder()`, which reads `order` — without it, `closeTab` would
+ * always compute "no tab left to switch to" regardless of what `tabs` holds.
  */
 function makeTestHub(tabIds: string[]): { hub: BrowserHub; internals: HubInternals } {
   const hub = new BrowserHub();
@@ -31,6 +39,7 @@ function makeTestHub(tabIds: string[]): { hub: BrowserHub; internals: HubInterna
   for (const id of tabIds) {
     internals.tabs.set(id, { id, incognito: false, view: { webContents: { close: () => {} } } });
   }
+  internals.order = [...tabIds];
   return { hub, internals };
 }
 
@@ -106,4 +115,30 @@ test("closeTab clears the closed tab's queue and cached CDP target id", async ()
   assert.equal(internals.tabTargetIds.has("tabA"), false, "tabTargetIds should drop the closed tab's entry");
   // tabB is untouched by closing tabA.
   assert.equal(internals.tabs.has("tabB"), true);
+});
+
+/**
+ * Regression: closing the currently-active *regular* tab while the applications grid is open
+ * (`gridOpen`, Task 8's `syncGridVisibility`) must move `activeId` to the remaining tab, the
+ * same way it already does while Settings is open. `selectTab` bails out immediately whenever
+ * `gridOpen` is true (so a tab switch can't silently reattach a `BrowserView` out from under a
+ * showing grid) — `closeTab`'s active-tab-replacement branch used to call `selectTab` for this
+ * bookkeeping, which meant it did nothing while the grid was up: `activeId` was left pointing
+ * at the deleted tab, and once the grid later closed, `syncGridVisibility` could not find a
+ * tab to reattach (`this.tabs.get(this.activeId)` came back `undefined`), leaving the content
+ * area permanently blank until the user clicked another tab by hand.
+ */
+test("closeTab moves activeId (without touching any view) when the grid is open and the active tab is closed", () => {
+  const { hub, internals } = makeTestHub(["tabA", "tabB"]);
+  internals.activeId = "tabA";
+  internals.gridOpen = true;
+  let changeCount = 0;
+  internals.onChange = () => {
+    changeCount++;
+  };
+
+  hub.closeTab("tabA");
+
+  assert.equal(internals.activeId, "tabB", "activeId must move to the remaining regular tab, not stay pointed at the deleted one");
+  assert.ok(changeCount > 0, "onChange must still fire so the renderer's tab list updates");
 });

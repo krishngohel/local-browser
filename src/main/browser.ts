@@ -907,10 +907,11 @@ export class BrowserHub {
     if (this.activeId === id) {
       const remaining = this.attachableOrder();
       const next = remaining[remaining.length - 1];
-      if (this.settingsOpen) {
-        // `selectTab` does nothing while Settings is up, which would leave `activeId` pointing
-        // at the tab just deleted. Move the pointer now, without touching the views (they are
-        // all detached anyway); `setSettingsOpen(false)` attaches the right one.
+      if (this.settingsOpen || this.gridOpen) {
+        // `selectTab` does nothing while Settings is up or the grid is showing, which would
+        // leave `activeId` pointing at the tab just deleted. Move the pointer now, without
+        // touching the views (they are all detached anyway) — `setSettingsOpen(false)` or
+        // `syncGridVisibility` reattaching once the grid closes will pick up the right one.
         this.activeId = next ?? null;
         this.onChange();
       } else if (next) {
