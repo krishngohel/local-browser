@@ -488,6 +488,39 @@ try {
     await ok("tabs_close", { id: idB });
   });
 
+  await check("cross-tab: Enter submits a background tab (type submit:true, and press)", async () => {
+    // A third "front" tab stays active for the whole check, so A and B are both genuinely
+    // background tabs throughout -- the DOM-script fallback path a synthetic KeyboardEvent
+    // alone can't submit through without the requestSubmit() step.
+    const openedA = await ok("tabs_new", { url: `${FX}/forms.html?tab=enter-a` });
+    const idA = /tab-\d+/.exec(openedA.text)?.[0];
+    assert.ok(idA, `no tab id in "${openedA.text}"`);
+    const openedB = await ok("tabs_new", { url: `${FX}/forms.html?tab=enter-b` });
+    const idB = /tab-\d+/.exec(openedB.text)?.[0];
+    assert.ok(idB, `no tab id in "${openedB.text}"`);
+    const openedFront = await ok("tabs_new", { url: `${FX}/index.html` });
+    const idFront = /tab-\d+/.exec(openedFront.text)?.[0];
+    assert.ok(idFront, `no tab id in "${openedFront.text}"`);
+
+    await ok("wait_for", { text: "Form fixture", tabId: idA });
+    await ok("wait_for", { text: "Form fixture", tabId: idB });
+
+    // type(..., submit: true) on a background tab.
+    const nameRefA = refOf((await ok("find", { label: "Name", tabId: idA })).text, "Name field on tab A");
+    await ok("type", { ref: nameRefA, text: "Typed Submit", submit: true, tabId: idA });
+    await ok("wait_for", { text: "submitted: Typed Submit", tabId: idA });
+
+    // type(..., submit: false) then a separate press("Enter") on a background tab.
+    const nameRefB = refOf((await ok("find", { label: "Name", tabId: idB })).text, "Name field on tab B");
+    await ok("type", { ref: nameRefB, text: "Pressed Submit", tabId: idB });
+    await ok("press", { key: "Enter", tabId: idB });
+    await ok("wait_for", { text: "submitted: Pressed Submit", tabId: idB });
+
+    await ok("tabs_close", { id: idA });
+    await ok("tabs_close", { id: idB });
+    await ok("tabs_close", { id: idFront });
+  });
+
   await check("asserts + visual + perf + network", async () => {
     await ok("navigate", { url: `${FX}/perf.html` });
     await ok("wait_for", { text: "settled" });

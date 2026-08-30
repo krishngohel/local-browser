@@ -293,3 +293,33 @@ export const keyChordScript = (chord: string): string => {
   return true;
 })()`;
 };
+
+/**
+ * Fallback for `press`/`type(..., submit: true)` on a tab whose real keyboard input Playwright
+ * cannot reach (see `withPage`): dispatches a synthetic keydown/keypress/keyup for `key` at
+ * `elExpr` (a JS expression evaluating to the target element, e.g. `document.activeElement` or
+ * a fresh `document.querySelector(...)`).
+ *
+ * A synthetic KeyboardEvent alone, unlike `el.click()`, never triggers a browser's native
+ * Enter-to-submit form activation — so for Enter this also approximates that behavior directly:
+ * if keydown's default action was not prevented by the page and the element is not a
+ * `<textarea>` (Enter there is a newline, not a submit), it calls the enclosing form's
+ * `requestSubmit()` (`submit()` on engines without it). Not a full keyboard simulation — just
+ * enough to make "type a value, press Enter to submit" behave the way it does on the active tab.
+ */
+export const dispatchKeyScript = (elExpr: string, key: string): string => `(() => {
+  const el = ${elExpr};
+  if (!el) return false;
+  const init = { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true };
+  const notPrevented = el.dispatchEvent(new KeyboardEvent('keydown', init));
+  el.dispatchEvent(new KeyboardEvent('keypress', init));
+  el.dispatchEvent(new KeyboardEvent('keyup', init));
+  if (${JSON.stringify(key)} === 'Enter' && notPrevented && el.tagName !== 'TEXTAREA') {
+    const form = el.form || (el.closest && el.closest('form'));
+    if (form) {
+      if (form.requestSubmit) form.requestSubmit();
+      else form.submit();
+    }
+  }
+  return true;
+})()`;

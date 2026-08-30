@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DialogPolicies } from "../../src/main/dialogs";
-import { keyChordScript, mouseEventScript, parseChord } from "../../src/main/page-scripts";
+import { dispatchKeyScript, keyChordScript, mouseEventScript, parseChord } from "../../src/main/page-scripts";
 
 test("dialog policy defaults to dismiss and is per tab", () => {
   const policies = new DialogPolicies();
@@ -58,4 +58,29 @@ test("mouseEventScript targets the ref and uses button 2 for contextmenu", () =>
   assert.match(hover, /\[data-lb-ref=\\"e3\\"\]/);
   assert.match(hover, /button: 0/);
   assert.match(mouseEventScript("e3", ["contextmenu"]), /button: 2/);
+});
+
+test("dispatchKeyScript dispatches all three key events at the given element", () => {
+  const js = dispatchKeyScript("document.activeElement", "Enter");
+  assert.match(js, /document\.activeElement/);
+  assert.match(js, /new KeyboardEvent\('keydown', init\)/);
+  assert.match(js, /new KeyboardEvent\('keypress', init\)/);
+  assert.match(js, /new KeyboardEvent\('keyup', init\)/);
+  assert.match(js, /key: "Enter"/);
+});
+
+test("dispatchKeyScript only approximates submit-on-Enter: skips textarea, requires default not prevented", () => {
+  const js = dispatchKeyScript("document.activeElement", "Enter");
+  assert.match(js, /el\.tagName !== 'TEXTAREA'/);
+  assert.match(js, /notPrevented/);
+  assert.match(js, /form\.requestSubmit/);
+  assert.match(js, /form\.submit\(\)/);
+});
+
+test("dispatchKeyScript does not attempt to submit for a non-Enter key", () => {
+  const js = dispatchKeyScript("document.activeElement", "Tab");
+  assert.match(js, /key: "Tab"/);
+  // The Enter-only submit branch is generated with the literal key baked in, so a non-Enter
+  // key's script can never reach it: the JSON-encoded key compared against 'Enter' is 'Tab'.
+  assert.match(js, /"Tab" === 'Enter'/);
 });

@@ -21,6 +21,7 @@ import {
   PAGE_INFO_SCRIPT,
   CAPTCHA_SCAN_SCRIPT,
   PERF_TIMING_SCRIPT,
+  dispatchKeyScript,
   fileInputKindScript,
   getTextScript,
   htmlScript,
@@ -1201,6 +1202,16 @@ export class BrowserHub {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         })()`,
           );
+          // A synthetic KeyboardEvent alone never triggers native Enter-to-submit, so this is
+          // a second, explicit step — see `dispatchKeyScript`. Re-queries the ref rather than
+          // reusing `document.activeElement`: `el.focus()` above is not guaranteed to have
+          // actually moved focus (e.g. a disabled or newly-detached element).
+          if (submit) {
+            await this.exec(
+              tab,
+              dispatchKeyScript(`document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)})`, "Enter"),
+            );
+          }
         },
       );
       this.rec?.record({
@@ -1233,10 +1244,7 @@ export class BrowserHub {
           await page.keyboard.press(key);
         },
         async () => {
-          await this.exec(
-            tab,
-            `document.activeElement && document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`,
-          );
+          await this.exec(tab, dispatchKeyScript("document.activeElement", key));
         },
       );
       this.rec?.record({ type: "press", key });
@@ -2553,7 +2561,14 @@ export class BrowserHub {
     fallback: () => Promise<void>,
   ): Promise<void> {
     const target = tab.id === this.activeId ? await this.pwTarget(tab) : null;
-    if (target) {
+    // `pwTarget` above awaits (Playwright connection, a CDP target lookup) — long enough for a
+    // different tab's `capturePng`/`watch` to call `selectTab` and detach this one in the
+    // meantime. Re-check right before acting rather than trusting the decision made before that
+    // await: a Playwright action started against a tab that has since gone inactive hangs or
+    // silently no-ops exactly like the case this branch exists to avoid (see `withPage`'s doc
+    // comment above). This narrows the race; it does not make tab selection and the action
+    // atomic — a detach mid-`pwFn` (e.g. during its own internal waits) is not covered.
+    if (target && tab.id === this.activeId) {
       await pwFn(target.page, target.root);
       return;
     }
