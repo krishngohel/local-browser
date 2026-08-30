@@ -12,12 +12,12 @@ test("new groups have defaults: read on, others off", () => {
   assert.equal(DEFAULT_TRANSFER_PREFS.toolsQa, false);
 });
 
-test("tool counts: legacy defaults = 32 + read 9 = 41; everything + evaluate = 70", () => {
+test("tool counts: legacy defaults = 32 + read 9 = 41; everything + evaluate = 71", () => {
   assert.equal(enabledToolCount({ ...DEFAULT_TRANSFER_PREFS }), 41);
   const all = Object.fromEntries(Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, true])) as typeof DEFAULT_TRANSFER_PREFS;
-  assert.equal(enabledToolCount(all, false), 69);
-  assert.equal(enabledToolCount(all, true), 70);
-  assert.equal(TOOL_GROUP_COUNTS.toolsInteract, 10);
+  assert.equal(enabledToolCount(all, false), 70);
+  assert.equal(enabledToolCount(all, true), 71);
+  assert.equal(TOOL_GROUP_COUNTS.toolsInteract, 11);
 });
 
 test("old prefs file without new keys migrates to defaults", () => {

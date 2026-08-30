@@ -1300,6 +1300,43 @@ export class BrowserHub {
     return this.withTab(tabId, (tab) => this.selectCore(tab, ref, value));
   }
 
+  /**
+   * Fills several fields from the latest snapshot in one round-trip: text/textarea via
+   * `typeTextCore`, `<select>` via `selectCore`, checkbox/radio via `clickCore` (only clicked
+   * when the requested value is truthy — `clickCore` toggles rather than sets, so an
+   * already-checked box cannot be unchecked this way). Calls the `xCore` methods directly
+   * rather than the public wrappers, since those would re-enter this tab's action queue while
+   * it is already held here and deadlock. One bad ref is reported per-field rather than
+   * aborting the rest.
+   */
+  async fillForm(
+    fields: { ref: string; value: string }[],
+    tabId?: string,
+  ): Promise<{ ref: string; ok: boolean; error?: string }[]> {
+    return this.withTab(tabId, async (tab) => {
+      const results: { ref: string; ok: boolean; error?: string }[] = [];
+      for (const { ref, value } of fields) {
+        try {
+          const item = tab.snapshotByRef.get(ref);
+          const tag = (item?.tag ?? "").toLowerCase();
+          const inputType = (item?.inputType ?? "").toLowerCase();
+          if (tag === "select") {
+            await this.selectCore(tab, ref, value);
+          } else if (inputType === "checkbox" || inputType === "radio") {
+            const wantChecked = value === "true" || value === "1" || value.toLowerCase() === "on";
+            if (wantChecked) await this.clickCore(tab, ref);
+          } else {
+            await this.typeTextCore(tab, ref, value, false);
+          }
+          results.push({ ref, ok: true });
+        } catch (e) {
+          results.push({ ref, ok: false, error: e instanceof Error ? e.message : String(e) });
+        }
+      }
+      return results;
+    });
+  }
+
   private async hoverCore(tab: Tab, ref: string): Promise<void> {
     await pace(this.humanPacing);
     const resolved = await this.resolveSelectors(tab, ref);

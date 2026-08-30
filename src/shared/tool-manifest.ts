@@ -200,6 +200,11 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
     group: "toolsInteract",
     description: "Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers.",
   },
+  {
+    name: "fill_form",
+    group: "toolsInteract",
+    description: "Fill several fields from the latest snapshot/forms call in one round-trip: { ref, value } pairs. Text/textarea fields are typed, <select> fields choose the option matching value, checkboxes/radios are clicked only when value is truthy (already-checked boxes are not unchecked). Returns a per-field { ref, ok, error? } result so one bad ref does not block the rest. Optionally target a specific tabId.",
+  },
 
   // Sessions and state
   { name: "cookies_get", group: "toolsState", description: "List cookies, optionally for one URL." },

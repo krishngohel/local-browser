@@ -206,6 +206,25 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
   define(
     server,
     deps,
+    "fill_form",
+    "Fill several fields from the latest snapshot/forms call in one round-trip: { ref, value } pairs. Text/textarea fields are typed, <select> fields choose the option matching value, checkboxes/radios are clicked only when value is truthy (already-checked boxes are not unchecked). Returns a per-field { ref, ok, error? } result so one bad ref does not block the rest. Optionally target a specific tabId.",
+    {
+      fields: z.array(z.object({ ref: z.string(), value: z.string() })).min(1),
+      tabId: z.string().optional(),
+    },
+    async ({ fields, tabId }) => {
+      try {
+        const results = await hub.fillForm(fields, tabId);
+        return text(JSON.stringify(results, null, 2));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  define(
+    server,
+    deps,
     "wait_for",
     "Wait until the page contains text, or until loading finishes if text is omitted. Optionally target a specific tabId (see tabs_list).",
     { text: z.string().optional(), timeoutMs: z.number().optional(), tabId: z.string().optional() },

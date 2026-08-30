@@ -29,7 +29,7 @@ export const TOOL_GROUP_COUNTS = {
   toolsTest: 5,
   toolsRecord: 5,
   toolsRead: 9,
-  toolsInteract: 10,
+  toolsInteract: 11,
   toolsState: 9,
   toolsQa: 9,
 } as const;

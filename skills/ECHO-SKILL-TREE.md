@@ -116,6 +116,8 @@ snapshot                               // photo + refs e0, e1, …
 
 **Hard rule:** `snapshot` immediately before every `click`, `type`, `fill`, or `select`. Refs (`e0`, `e1`) are from the latest snapshot only. Never reuse old refs. Never guess selectors.
 
+Filling several fields at once (a job application, a signup form)? Use `fill_form` (Interaction depth) with a list of `{ ref, value }` pairs instead of separate `fill`/`select`/`click` calls.
+
 ```
 click({ ref: "e3" })
 type({ ref: "e1", text: "hello", submit: true })   // submit presses Enter
@@ -231,6 +233,7 @@ zoom                                   // page zoom factor, or omit to reset
 frames / frame_select                  // list iframes, scope tools to one by index
 dialog                                 // decide in advance how the next alert, confirm, or prompt is answered, then read the last dialog seen
 evaluate                               // only if the user also enabled it in Settings → Transfers
+fill_form                              // batch { ref, value } pairs from a forms/snapshot call; checkboxes/radios only checked, never unchecked
 ```
 
 Call `dialog` **before** the click that raises the alert. It covers dialogs raised by the main frame.
@@ -347,7 +350,7 @@ If the photo shows captcha, consent, login, or 2FA:
 
 ---
 
-## 6. Every tool (69)
+## 6. Every tool (71)
 
 Generated from Echo's tool manifest. Groups marked **off by default** only appear once the user turns them on in Settings → Transfers and reconnects the client. `evaluate` needs its own switch on the same page, on top of its group.
 
@@ -432,7 +435,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `pdf_text` | Text of the current PDF, or of the page printed to PDF. Optionally target a specific tabId (see tabs_list). |
 | `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. Optionally target a specific tabId (see tabs_list). |
 
-### Interaction depth (11) — off by default
+### Interaction depth (12) — off by default
 
 | Tool | What it does |
 | --- | --- |
@@ -447,6 +450,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `frame_select` | Scope snapshot/click/get_text to an iframe by index; omit index to return to the main frame. |
 | `zoom` | Set the page zoom factor (0.25-5), or omit to reset. |
 | `evaluate` | Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers. |
+| `fill_form` | Fill several fields from the latest snapshot/forms call in one round-trip: { ref, value } pairs. Text/textarea fields are typed, <select> fields choose the option matching value, checkboxes/radios are clicked only when value is truthy (already-checked boxes are not unchecked). Returns a per-field { ref, ok, error? } result so one bad ref does not block the rest. Optionally target a specific tabId. |
 
 ### Sessions and state (9) — off by default
 

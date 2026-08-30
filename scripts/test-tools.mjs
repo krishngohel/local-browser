@@ -5,7 +5,7 @@
  *
  * Starts the fixture server and a real Echo (Electron) on a throwaway profile with every
  * tool group switched on, connects an MCP client over Streamable HTTP, and calls every one
- * of the 69 tools at least once. `search_web` is the single exception: it drives live
+ * of the 71 tools at least once. `search_web` is the single exception: it drives live
  * Google, which has no place in a test that must pass offline.
  *
  * Failures are collected rather than thrown, so one broken tool does not hide the rest; the
@@ -31,7 +31,7 @@ const CDP_PORT = 9333;
 const MCP_PORT_PREFERRED = 18931;
 const MCP_PORT_SPAN = 10;
 /** Every tool Echo registers with all groups on and `evaluate` enabled. */
-const TOTAL_TOOLS = 70;
+const TOTAL_TOOLS = 71;
 /** The one tool the e2e run must not call: it hits live Google. */
 const SKIPPED = new Set(["search_web"]);
 
@@ -296,6 +296,48 @@ try {
     await ok("type", { ref: await findRef({ label: "Name" }), text: "Grace", submit: true });
     await ok("wait_for", { text: "submitted: Grace" });
     assert.match((await ok("get_text")).text, /submitted: Grace \/ green/);
+  });
+
+  await check("fill_form fills text, select, and checkbox fields in one call and reports per-field results", async () => {
+    await ok("navigate", { url: `${FX}/forms.html` });
+    const forms = await json("forms");
+    const nameField = forms[0].fields.find((f) => f.name === "name");
+    const colorField = forms[0].fields.find((f) => f.name === "color");
+    const agreeField = forms[0].fields.find((f) => f.name === "agree");
+    assert.ok(
+      nameField?.ref && colorField?.ref && agreeField?.ref,
+      `missing refs on name/color/agree: ${JSON.stringify(forms[0].fields)}`,
+    );
+
+    const results = await json("fill_form", {
+      fields: [
+        { ref: nameField.ref, value: "Ada Lovelace" },
+        { ref: colorField.ref, value: "blue" },
+        { ref: agreeField.ref, value: "true" },
+      ],
+    });
+    assert.equal(results.every((r) => r.ok === true), true, JSON.stringify(results));
+
+    const after = await json("forms");
+    assert.equal(after[0].fields.find((f) => f.name === "name")?.value, "Ada Lovelace");
+    assert.equal(after[0].fields.find((f) => f.name === "color")?.value, "blue");
+    assert.equal(
+      JSON.parse((await ok("evaluate", { js: "document.getElementById('agree').checked" })).text),
+      true,
+      "fill_form should have checked the checkbox",
+    );
+
+    // One bad ref is reported per-field rather than blocking the rest of the batch.
+    const partial = await json("fill_form", {
+      fields: [
+        { ref: "e999", value: "x" },
+        { ref: nameField.ref, value: "Grace Hopper" },
+      ],
+    });
+    assert.equal(partial[0].ok, false, "bad ref should be reported as not ok");
+    assert.ok(partial[0].error, "bad ref result should carry an error message");
+    assert.equal(partial[1].ok, true, "the valid field in the same batch should still succeed");
+    assert.equal((await json("forms"))[0].fields.find((f) => f.name === "name")?.value, "Grace Hopper");
   });
 
   await check("tables", async () => {
