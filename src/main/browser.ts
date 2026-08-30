@@ -204,7 +204,8 @@ export class BrowserHub {
   private seq = 0;
   private settingsOpen = false;
   private rec: Recorder | null = null;
-  private watching = false;
+  /** Tabs currently mid-`watch()`, so two overlapping `watch` calls on the same tab collide instead of racing. */
+  private watchingTabs = new Set<string>();
   private history: History | null = null;
   private downloads: Downloads | null = null;
   private homeUrl = HOME_URL;
@@ -550,6 +551,14 @@ export class BrowserHub {
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "..", "preload", "page.js"),
+        // A BrowserView not currently attached to the window is otherwise treated as
+        // backgrounded: Chromium throttles its own JS timers there (setTimeout/setInterval,
+        // rAF). A page's own script — form validation, a polling widget — would then react to
+        // a tabId-targeted click/type more slowly, or not at all, while its tab sits in the
+        // background. Multi-tab tool calls need every tab's page script to keep running at
+        // normal speed regardless of which one is attached; see `withPage` for the separate
+        // fix that makes Playwright's own actions work on a detached tab at all.
+        backgroundThrottling: false,
       },
     });
     const tab: Tab = {
@@ -798,7 +807,7 @@ export class BrowserHub {
     }
     this.onChange();
     const landed = tab.view.webContents.getURL();
-    const challenge = await this.noteCaptchaOnLoad(landed);
+    const challenge = await this.noteCaptchaOnLoad(tab, landed);
     return `${landed}${backedOff}${challenge}`;
   }
 
@@ -807,10 +816,10 @@ export class BrowserHub {
    * notifies the person at the machine (once per host) and returns a line telling the assistant
    * to pause and hand off. Best-effort: a scan failure never fails the navigation.
    */
-  private async noteCaptchaOnLoad(landed: string): Promise<string> {
+  private async noteCaptchaOnLoad(tab: Tab, landed: string): Promise<string> {
     let found: CaptchaScan | null = null;
     try {
-      found = (await this.exec(CAPTCHA_SCAN_SCRIPT)) as CaptchaScan | null;
+      found = (await this.exec(tab, CAPTCHA_SCAN_SCRIPT)) as CaptchaScan | null;
     } catch {
       return "";
     }
@@ -838,14 +847,18 @@ export class BrowserHub {
     return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Echo does not solve CAPTCHAs — pause and ask the user to complete it in the Echo window, then continue.`;
   }
 
-  /** On-demand CAPTCHA scan for the active tab, for the `captcha_check` tool. */
-  async detectCaptcha(): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
-    const found = (await this.exec(CAPTCHA_SCAN_SCRIPT)) as {
+  /** On-demand CAPTCHA scan, for the `captcha_check` tool. */
+  private async detectCaptchaCore(tab: Tab): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
+    const found = (await this.exec(tab, CAPTCHA_SCAN_SCRIPT)) as {
       present: boolean;
       kind: string | null;
       visible: boolean;
     };
     return found;
+  }
+
+  async detectCaptcha(tabId?: string): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
+    return this.withTab(tabId, (tab) => this.detectCaptchaCore(tab));
   }
 
   /** `navigate` for assistant-driven callers. The omnibox keeps the unrestricted path. */
@@ -854,12 +867,16 @@ export class BrowserHub {
     return this.navigate(url, tabId);
   }
 
-  back(): void {
-    const wc = this.requireActive().view.webContents;
+  private backCore(tab: Tab): void {
+    const wc = tab.view.webContents;
     if (wc.navigationHistory?.canGoBack()) {
       wc.navigationHistory.goBack();
       this.rec?.record({ type: "back" });
     }
+  }
+
+  back(tabId?: string): Promise<void> {
+    return this.withTab(tabId, async (tab) => this.backCore(tab));
   }
 
   forward(): void {
@@ -870,14 +887,18 @@ export class BrowserHub {
     }
   }
 
-  reload(): void {
-    const wc = this.requireActive().view.webContents;
+  private reloadCore(tab: Tab): void {
+    const wc = tab.view.webContents;
     if (wc.isLoading()) wc.stop();
     else {
       wc.reload();
       this.rec?.record({ type: "reload" });
     }
     this.onChange();
+  }
+
+  reload(tabId?: string): Promise<void> {
+    return this.withTab(tabId, async (tab) => this.reloadCore(tab));
   }
 
   async screenshot(filePath?: string, opts?: { fullPage?: boolean }): Promise<string> {
@@ -892,13 +913,13 @@ export class BrowserHub {
     return dest;
   }
 
-  async captureForModel(opts?: { fullPage?: boolean }): Promise<{
+  async captureForModel(opts?: { fullPage?: boolean; tabId?: string }): Promise<{
     jpeg: Buffer;
     width: number;
     height: number;
     png: Buffer;
   }> {
-    const png = await this.capturePng({ fullPage: opts?.fullPage });
+    const png = await this.capturePng({ fullPage: opts?.fullPage, tabId: opts?.tabId });
     const fitted = fitForModel(nativeImage.createFromBuffer(png));
     const size = fitted.getSize();
     return {
@@ -909,9 +930,11 @@ export class BrowserHub {
     };
   }
 
-  async capturePng(opts?: { fullPage?: boolean; reveal?: boolean }): Promise<Buffer> {
+  async capturePng(opts?: { fullPage?: boolean; reveal?: boolean; tabId?: string }): Promise<Buffer> {
+    const tab = this.resolveTab(opts?.tabId);
+    if (tab.id !== this.activeId) this.selectTab(tab.id);
     if (opts?.reveal !== false) await this.revealForCapture();
-    const page = await this.playwrightPage();
+    const page = await this.playwrightPage(tab);
     if (page) {
       try {
         return await withTimeout(
@@ -922,8 +945,7 @@ export class BrowserHub {
         /* fall through to Electron capture */
       }
     }
-    const wc = this.requireActive().view.webContents;
-    const image = await withTimeout(wc.capturePage(), 6000);
+    const image = await withTimeout(tab.view.webContents.capturePage(), 6000);
     const png = image.toPNG();
     if (!png.length) throw new Error("Screenshot was empty. Show the Echo window and try again.");
     return png;
@@ -933,33 +955,35 @@ export class BrowserHub {
     return this.capturePng().then((png) => nativeImage.createFromBuffer(png).toDataURL());
   }
 
-  async watch(opts?: { durationMs?: number; maxFrames?: number }): Promise<{
+  async watch(opts?: { durationMs?: number; maxFrames?: number; tabId?: string }): Promise<{
     url: string;
     durationMs: number;
     frames: { tMs: number; jpeg: Buffer; width: number; height: number }[];
   }> {
+    const tab = this.resolveTab(opts?.tabId);
     const durationMs = Math.min(6000, Math.max(800, opts?.durationMs ?? 2500));
     const maxFrames = Math.min(12, Math.max(4, opts?.maxFrames ?? 8));
-    if (this.watching) throw new Error("Already watching the page. Wait for the current live feed to finish.");
-    this.watching = true;
+    if (this.watchingTabs.has(tab.id)) throw new Error("Already watching this tab. Wait for the current live feed to finish.");
+    this.watchingTabs.add(tab.id);
     try {
+      if (tab.id !== this.activeId) this.selectTab(tab.id);
       await this.revealForCapture();
-      const collected = await this.watchViaCdp(durationMs);
-      const fallback = collected.length === 0 ? await this.watchViaPoll(durationMs, maxFrames) : collected;
+      const collected = await this.watchViaCdp(tab, durationMs);
+      const fallback = collected.length === 0 ? await this.watchViaPoll(tab, durationMs, maxFrames) : collected;
       const unique = dedupeFrames(fallback);
       let frames = subsample(unique, maxFrames);
       if (!frames.length) {
-        const still = await this.captureForModel();
+        const still = await this.captureForModel({ tabId: tab.id });
         frames = [{ tMs: 0, jpeg: still.jpeg, width: still.width, height: still.height }];
       }
-      return { url: this.activeUrl(), durationMs, frames };
+      return { url: tab.view.webContents.getURL(), durationMs, frames };
     } finally {
-      this.watching = false;
+      this.watchingTabs.delete(tab.id);
     }
   }
 
-  private async watchViaCdp(durationMs: number): Promise<{ tMs: number; jpeg: Buffer; width: number; height: number }[]> {
-    const page = await this.playwrightPage();
+  private async watchViaCdp(tab: Tab, durationMs: number): Promise<{ tMs: number; jpeg: Buffer; width: number; height: number }[]> {
+    const page = await this.playwrightPage(tab);
     if (!page) return [];
     let session: PwCdpSession | null = null;
     const raw: { tMs: number; data: string }[] = [];
@@ -993,6 +1017,7 @@ export class BrowserHub {
   }
 
   private async watchViaPoll(
+    tab: Tab,
     durationMs: number,
     maxFrames: number,
   ): Promise<{ tMs: number; jpeg: Buffer; width: number; height: number }[]> {
@@ -1000,7 +1025,7 @@ export class BrowserHub {
     const started = Date.now();
     const step = Math.max(160, Math.floor(durationMs / maxFrames));
     while (Date.now() - started < durationMs && frames.length < maxFrames) {
-      const view = jpegFromPng(await this.capturePng({ reveal: false }));
+      const view = jpegFromPng(await this.capturePng({ reveal: false, tabId: tab.id }));
       frames.push({ tMs: Date.now() - started, ...view });
       const remaining = durationMs - (Date.now() - started);
       if (remaining <= 0) break;
@@ -1043,8 +1068,8 @@ export class BrowserHub {
     return frame.executeJavaScript(js);
   }
 
-  listFrames(): { index: number; url: string; name: string }[] {
-    const wc = this.requireActive().view.webContents;
+  private listFramesCore(tab: Tab): { index: number; url: string; name: string }[] {
+    const wc = tab.view.webContents;
     return wc.mainFrame.framesInSubtree.map((frame, index) => ({
       index,
       url: frame.url || "",
@@ -1052,16 +1077,19 @@ export class BrowserHub {
     }));
   }
 
+  listFrames(tabId?: string): Promise<{ index: number; url: string; name: string }[]> {
+    return this.withTab(tabId, async (tab) => this.listFramesCore(tab));
+  }
+
   /** Index 0 is the main frame; null also returns to it. */
-  selectFrame(index: number | null): { index: number | null; url: string; name: string } {
-    const tab = this.requireActive();
+  private selectFrameCore(tab: Tab, index: number | null): { index: number | null; url: string; name: string } {
     if (index === null || index === 0) {
       tab.frameIndex = null;
       tab.frameUrl = null;
       tab.snapshotByRef.clear();
-      return { index: null, url: this.activeUrl(), name: "" };
+      return { index: null, url: tab.view.webContents.getURL() || "", name: "" };
     }
-    const frames = this.listFrames();
+    const frames = this.listFramesCore(tab);
     const frame = frames[index];
     if (!frame) throw new Error(`No frame at index ${index}. Call frames to list them.`);
     tab.frameIndex = index;
@@ -1070,14 +1098,23 @@ export class BrowserHub {
     return frame;
   }
 
-  /** The active tab's frame selection, or null when it is reading its main frame. */
-  selectedFrame(): number | null {
-    return this.active()?.frameIndex ?? null;
+  selectFrame(index: number | null, tabId?: string): Promise<{ index: number | null; url: string; name: string }> {
+    return this.withTab(tabId, async (tab) => this.selectFrameCore(tab, index));
   }
 
-  async snapshot(): Promise<SnapshotItem[]> {
-    const tab = this.requireActive();
-    const items = (await this.exec(`(() => {
+  /** The tab's frame selection, or null when it is reading its main frame. */
+  private selectedFrameCore(tab: Tab): number | null {
+    return tab.frameIndex ?? null;
+  }
+
+  selectedFrame(tabId?: string): Promise<number | null> {
+    return this.withTab(tabId, async (tab) => this.selectedFrameCore(tab));
+  }
+
+  private async snapshotCore(tab: Tab): Promise<SnapshotItem[]> {
+    const items = (await this.exec(
+      tab,
+      `(() => {
       ${ECHO_SELECTORS_SOURCE}
       const sel = 'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
       const nodes = Array.from(document.querySelectorAll(sel)).slice(0, 250);
@@ -1095,54 +1132,77 @@ export class BrowserHub {
           selectors: echoSelectors(el)
         };
       });
-    })()`)) as SnapshotItem[];
+    })()`,
+    )) as SnapshotItem[];
     tab.snapshotByRef.clear();
     for (const item of items) tab.snapshotByRef.set(item.ref, item);
     return items;
   }
 
-  async click(ref: string): Promise<void> {
+  async snapshot(tabId?: string): Promise<SnapshotItem[]> {
+    return this.withTab(tabId, (tab) => this.snapshotCore(tab));
+  }
+
+  private async clickCore(tab: Tab, ref: string): Promise<void> {
     await pace(this.humanPacing);
-    const resolved = await this.resolveSelectors(ref);
+    const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
-      await this.withPage(async (_page, root) => {
-        await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().click({ timeout: 8000 });
-      }, async () => {
-        const found = await this.exec(`(() => {
+      await this.withPage(
+        tab,
+        async (_page, root) => {
+          await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().click({ timeout: 8000 });
+        },
+        async () => {
+          const found = await this.exec(
+            tab,
+            `(() => {
           const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
           if (!el) return false;
           el.click();
           return true;
-        })()`);
-        if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
-      });
+        })()`,
+          );
+          if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
+        },
+      );
       this.rec?.record({ type: "click", selectors: resolved.selectors, text: resolved.text });
     } finally {
       this.rec?.endIgnoreSoon();
     }
   }
 
-  async typeText(ref: string, text: string, submit = false): Promise<void> {
+  async click(ref: string, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.clickCore(tab, ref));
+  }
+
+  private async typeTextCore(tab: Tab, ref: string, text: string, submit = false): Promise<void> {
     await pace(this.humanPacing);
-    const resolved = await this.resolveSelectors(ref);
+    const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
-      await this.withPage(async (_page, root) => {
-        const loc = root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
-        await loc.click({ timeout: 8000 });
-        await loc.fill(text);
-        if (submit) await loc.press("Enter");
-      }, async () => {
-        await this.exec(`(() => {
+      await this.withPage(
+        tab,
+        async (_page, root) => {
+          const loc = root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
+          await loc.click({ timeout: 8000 });
+          await loc.fill(text);
+          if (submit) await loc.press("Enter");
+        },
+        async () => {
+          await this.exec(
+            tab,
+            `(() => {
           const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
           if (!el) throw new Error('ref not found');
           el.focus();
           if ('value' in el) el.value = ${JSON.stringify(text)};
           el.dispatchEvent(new Event('input', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
-        })()`);
-      });
+        })()`,
+          );
+        },
+      );
       this.rec?.record({
         type: "type",
         selectors: resolved.selectors,
@@ -1155,20 +1215,26 @@ export class BrowserHub {
     }
   }
 
-  async fill(ref: string, value: string): Promise<void> {
-    await this.typeText(ref, value, false);
+  async typeText(ref: string, text: string, submit = false, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.typeTextCore(tab, ref, text, submit));
   }
 
-  async press(key: string): Promise<void> {
+  async fill(ref: string, value: string, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.typeTextCore(tab, ref, value, false));
+  }
+
+  private async pressCore(tab: Tab, key: string): Promise<void> {
     await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (page) => {
           await page.keyboard.press(key);
         },
         async () => {
           await this.exec(
+            tab,
             `document.activeElement && document.activeElement.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }))`,
           );
         },
@@ -1179,29 +1245,41 @@ export class BrowserHub {
     }
   }
 
-  async scroll(deltaY: number): Promise<void> {
+  async press(key: string, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.pressCore(tab, key));
+  }
+
+  private async scrollCore(tab: Tab, deltaY: number): Promise<void> {
     await pace(this.humanPacing);
     const amount = Number(deltaY) || 600;
-    await this.requireActive().view.webContents.executeJavaScript(`window.scrollBy(0, ${amount})`);
+    await tab.view.webContents.executeJavaScript(`window.scrollBy(0, ${amount})`);
     this.rec?.record({ type: "scroll", deltaY: amount });
   }
 
-  async select(ref: string, value: string): Promise<void> {
+  async scroll(deltaY: number, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.scrollCore(tab, deltaY));
+  }
+
+  private async selectCore(tab: Tab, ref: string, value: string): Promise<void> {
     await pace(this.humanPacing);
-    const resolved = await this.resolveSelectors(ref);
+    const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (_page, root) => {
           await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().selectOption(value);
         },
         async () => {
-          await this.exec(`(() => {
+          await this.exec(
+            tab,
+            `(() => {
             const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
             if (!el) throw new Error('ref not found');
             el.value = ${JSON.stringify(value)};
             el.dispatchEvent(new Event('change', { bubbles: true }));
-          })()`);
+          })()`,
+          );
         },
       );
       this.rec?.record({ type: "select", selectors: resolved.selectors, value });
@@ -1210,17 +1288,22 @@ export class BrowserHub {
     }
   }
 
-  async hover(ref: string): Promise<void> {
+  async select(ref: string, value: string, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.selectCore(tab, ref, value));
+  }
+
+  private async hoverCore(tab: Tab, ref: string): Promise<void> {
     await pace(this.humanPacing);
-    const resolved = await this.resolveSelectors(ref);
+    const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (_page, root) => {
           await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().hover({ timeout: 8000 });
         },
         async () => {
-          const found = await this.exec(mouseEventScript(ref, ["mouseover", "mouseenter", "mousemove"]));
+          const found = await this.exec(tab, mouseEventScript(ref, ["mouseover", "mouseenter", "mousemove"]));
           if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
         },
       );
@@ -1230,11 +1313,16 @@ export class BrowserHub {
     }
   }
 
+  async hover(ref: string, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.hoverCore(tab, ref));
+  }
+
   /** Recorded-playback hover: the first selector that resolves wins. */
   async hoverSelectors(selectors: string[]): Promise<void> {
+    const tab = this.requireActive();
     this.rec?.beginIgnore();
     try {
-      const target = await this.pwTarget();
+      const target = await this.pwTarget(tab);
       if (target) {
         for (const sel of selectors) {
           try {
@@ -1246,6 +1334,7 @@ export class BrowserHub {
         }
       }
       const found = await this.exec(
+        tab,
         mouseEventSelectorsScript(selectors, ["mouseover", "mouseenter", "mousemove"]),
       );
       if (!found) throw new Error("Could not find the recorded element. The page may have changed.");
@@ -1255,15 +1344,18 @@ export class BrowserHub {
   }
 
   async doubleClick(ref: string): Promise<void> {
+    const tab = this.requireActive();
     await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (_page, root) => {
           await root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first().dblclick({ timeout: 8000 });
         },
         async () => {
           const found = await this.exec(
+            tab,
             mouseEventScript(ref, ["mousedown", "mouseup", "click", "mousedown", "mouseup", "click", "dblclick"]),
           );
           if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
@@ -1275,10 +1367,12 @@ export class BrowserHub {
   }
 
   async rightClick(ref: string): Promise<void> {
+    const tab = this.requireActive();
     await pace(this.humanPacing);
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (_page, root) => {
           await root
             .locator(`[data-lb-ref="${cssEscape(ref)}"]`)
@@ -1286,7 +1380,7 @@ export class BrowserHub {
             .click({ timeout: 8000, button: "right" });
         },
         async () => {
-          const found = await this.exec(mouseEventScript(ref, ["contextmenu"]));
+          const found = await this.exec(tab, mouseEventScript(ref, ["contextmenu"]));
           if (!found) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
         },
       );
@@ -1301,8 +1395,9 @@ export class BrowserHub {
    * drive it — so this has no executeJavaScript fallback.
    */
   async drag(fromRef: string, to: { ref?: string; dx?: number; dy?: number }): Promise<string> {
+    const tab = this.requireActive();
     await pace(this.humanPacing);
-    const target = await this.pwTarget({ wait: true });
+    const target = await this.pwTarget(tab, { wait: true });
     if (!target) throw new Error("drag needs Playwright attached; retry in a moment");
     const from = target.root.locator(`[data-lb-ref="${cssEscape(fromRef)}"]`).first();
     if (to.ref) {
@@ -1324,16 +1419,18 @@ export class BrowserHub {
   }
 
   async shortcut(chord: string): Promise<void> {
+    const tab = this.requireActive();
     const key = String(chord).trim();
     if (!key) throw new Error("Give a key chord, e.g. Control+Shift+P.");
     this.rec?.beginIgnore();
     try {
       await this.withPage(
+        tab,
         async (page) => {
           await page.keyboard.press(key);
         },
         async () => {
-          await this.exec(keyChordScript(key));
+          await this.exec(tab, keyChordScript(key));
         },
       );
     } finally {
@@ -1348,13 +1445,14 @@ export class BrowserHub {
    * `<input type=file>` cannot be filled from page JS, and neither can a chooser.
    */
   async uploadFile(ref: string, paths: string[]): Promise<string> {
+    const tab = this.requireActive();
     const files = paths.map((p) => String(p).trim()).filter(Boolean);
     if (!files.length) throw new Error("Give at least one file path.");
     const missing = files.filter((f) => !fs.existsSync(f));
     if (missing.length) throw new Error(`No such file: ${missing.join(", ")}`);
-    const target = await this.pwTarget({ wait: true });
+    const target = await this.pwTarget(tab, { wait: true });
     if (!target) throw new Error("upload_file needs Playwright attached; retry in a moment");
-    const kind = await this.exec(fileInputKindScript(ref));
+    const kind = await this.exec(tab, fileInputKindScript(ref));
     if (kind === null) throw new Error(`No element with ref ${ref}. Call snapshot for fresh refs.`);
     const locator = target.root.locator(`[data-lb-ref="${cssEscape(ref)}"]`).first();
     const count = `${files.length} file${files.length === 1 ? "" : "s"}`;
@@ -1391,7 +1489,7 @@ export class BrowserHub {
 
   /** JSON of an in-page expression, capped so a huge result cannot flood the transcript. */
   async evaluate(js: string, maxChars = 20_000): Promise<string> {
-    const value = await this.exec(js);
+    const value = await this.exec(this.requireActive(), js);
     let json: string;
     try {
       json = JSON.stringify(value) ?? "undefined";
@@ -1405,29 +1503,33 @@ export class BrowserHub {
     return json.slice(0, Math.max(0, maxChars - marker.length)) + marker;
   }
 
-  async waitFor(opts: { text?: string; timeoutMs?: number; record?: boolean }): Promise<void> {
+  private async waitForCore(tab: Tab, opts: { text?: string; timeoutMs?: number; record?: boolean }): Promise<void> {
     const timeout = opts.timeoutMs ?? 10000;
     const start = Date.now();
     while (Date.now() - start < timeout) {
       if (opts.text) {
-        const text = await this.pageText();
+        const text = await this.pageTextCore(tab);
         if (text.toLowerCase().includes(opts.text.toLowerCase())) {
           if (opts.record !== false) this.rec?.record({ type: "wait", text: opts.text, ms: timeout });
           return;
         }
       } else {
-        const wc = this.requireActive().view.webContents;
-        if (!wc.isLoading()) return;
+        if (!tab.view.webContents.isLoading()) return;
       }
       await sleep(250);
     }
     throw new Error("wait_for timed out");
   }
 
+  async waitFor(opts: { text?: string; timeoutMs?: number; record?: boolean }, tabId?: string): Promise<void> {
+    return this.withTab(tabId, (tab) => this.waitForCore(tab, opts));
+  }
+
   async clickSelectors(selectors: string[], text?: string): Promise<void> {
+    const tab = this.requireActive();
     this.rec?.beginIgnore();
     try {
-      const target = await this.pwTarget();
+      const target = await this.pwTarget(tab);
       if (target) {
         for (const sel of selectors) {
           try {
@@ -1454,7 +1556,9 @@ export class BrowserHub {
           }
         }
       }
-      const found = await this.exec(`(() => {
+      const found = await this.exec(
+        tab,
+        `(() => {
         const sels = ${JSON.stringify(selectors)};
         for (const sel of sels) {
           try {
@@ -1477,7 +1581,8 @@ export class BrowserHub {
         match.scrollIntoView({ block: 'center', inline: 'nearest' });
         match.click();
         return true;
-      })()`);
+      })()`,
+      );
       if (!found) throw new Error("Could not find the recorded element. The page may have changed.");
     } finally {
       this.rec?.endIgnoreSoon();
@@ -1485,9 +1590,10 @@ export class BrowserHub {
   }
 
   async typeSelectors(selectors: string[], text: string, submit = false, name?: string): Promise<void> {
+    const tab = this.requireActive();
     this.rec?.beginIgnore();
     try {
-      const target = await this.pwTarget();
+      const target = await this.pwTarget(tab);
       if (target) {
         for (const sel of selectors) {
           try {
@@ -1513,7 +1619,9 @@ export class BrowserHub {
           }
         }
       }
-      const found = await this.exec(`(() => {
+      const found = await this.exec(
+        tab,
+        `(() => {
         const sels = ${JSON.stringify(selectors)};
         const value = ${JSON.stringify(text)};
         const submit = ${submit ? "true" : "false"};
@@ -1531,7 +1639,8 @@ export class BrowserHub {
           } catch (e) {}
         }
         return false;
-      })()`);
+      })()`,
+      );
       if (!found) throw new Error("Could not find the recorded input. The page may have changed.");
     } finally {
       this.rec?.endIgnoreSoon();
@@ -1539,9 +1648,10 @@ export class BrowserHub {
   }
 
   async selectSelectors(selectors: string[], value: string): Promise<void> {
+    const tab = this.requireActive();
     this.rec?.beginIgnore();
     try {
-      const target = await this.pwTarget();
+      const target = await this.pwTarget(tab);
       if (target) {
         for (const sel of selectors) {
           try {
@@ -1552,7 +1662,9 @@ export class BrowserHub {
           }
         }
       }
-      const found = await this.exec(`(() => {
+      const found = await this.exec(
+        tab,
+        `(() => {
         const sels = ${JSON.stringify(selectors)};
         const value = ${JSON.stringify(value)};
         for (const sel of sels) {
@@ -1565,7 +1677,8 @@ export class BrowserHub {
           } catch (e) {}
         }
         return false;
-      })()`);
+      })()`,
+      );
       if (!found) throw new Error("Could not find the recorded select. The page may have changed.");
     } finally {
       this.rec?.endIgnoreSoon();
@@ -1606,11 +1719,15 @@ export class BrowserHub {
    * usually a stale snapshot rather than a hidden element, which is worth saying out loud.
    */
   async elementVisible(ref: string): Promise<boolean | null> {
-    return (await this.exec(visibleScript(ref))) as boolean | null;
+    return (await this.exec(this.requireActive(), visibleScript(ref))) as boolean | null;
   }
 
-  async pageText(): Promise<string> {
-    return (await this.exec(`document.body ? document.body.innerText : ''`)) as string;
+  private async pageTextCore(tab: Tab): Promise<string> {
+    return (await this.exec(tab, `document.body ? document.body.innerText : ''`)) as string;
+  }
+
+  async pageText(tabId?: string): Promise<string> {
+    return this.withTab(tabId, (tab) => this.pageTextCore(tab));
   }
 
   async extractReadable(): Promise<{ title: string; url: string; markdown: string }> {
@@ -1661,11 +1778,15 @@ export class BrowserHub {
   }
 
   /** Visible text of one snapshot ref, or of the whole body. */
-  async getText(ref?: string, maxChars = 40_000): Promise<string> {
+  private async getTextCore(tab: Tab, ref: string | undefined, maxChars: number): Promise<string> {
     const cap = Math.max(1, Math.min(maxChars, 40_000));
-    const value = (await this.exec(getTextScript(ref ?? null, cap))) as string | null;
+    const value = (await this.exec(tab, getTextScript(ref ?? null, cap))) as string | null;
     if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
     return value;
+  }
+
+  async getText(ref?: string, maxChars = 40_000, tabId?: string): Promise<string> {
+    return this.withTab(tabId, (tab) => this.getTextCore(tab, ref, maxChars));
   }
 
   /**
@@ -1673,8 +1794,11 @@ export class BrowserHub {
    * and an omitted one is simply not tested. Takes a fresh snapshot first, so the refs it
    * returns are the ones `click`/`type`/`fill` will resolve.
    */
-  async find(q: { text?: string; role?: string; label?: string; limit?: number }): Promise<SnapshotItem[]> {
-    const items = await this.snapshot();
+  private async findCore(
+    tab: Tab,
+    q: { text?: string; role?: string; label?: string; limit?: number },
+  ): Promise<SnapshotItem[]> {
+    const items = await this.snapshotCore(tab);
     const wanted = {
       text: q.text?.trim().toLowerCase() ?? "",
       role: q.role?.trim().toLowerCase() ?? "",
@@ -1693,30 +1817,36 @@ export class BrowserHub {
     return matches.slice(0, Math.max(1, q.limit ?? 50));
   }
 
-  async links(filter?: string, limit = 300): Promise<PageLink[]> {
-    const wc = this.requireActive().view.webContents;
-    const cap = Math.max(1, Math.min(limit, 300));
-    return (await wc.executeJavaScript(linksScript(filter?.trim() || null, cap))) as PageLink[];
+  async find(q: { text?: string; role?: string; label?: string; limit?: number }, tabId?: string): Promise<SnapshotItem[]> {
+    return this.withTab(tabId, (tab) => this.findCore(tab, q));
   }
 
-  async tables(maxRows = 30): Promise<PageTable[]> {
-    const wc = this.requireActive().view.webContents;
-    return (await wc.executeJavaScript(tablesScript(Math.max(1, maxRows)))) as PageTable[];
+  private async linksCore(tab: Tab, filter: string | undefined, limit: number): Promise<PageLink[]> {
+    const cap = Math.max(1, Math.min(limit, 300));
+    return (await tab.view.webContents.executeJavaScript(linksScript(filter?.trim() || null, cap))) as PageLink[];
+  }
+  async links(filter?: string, limit = 300, tabId?: string): Promise<PageLink[]> {
+    return this.withTab(tabId, (tab) => this.linksCore(tab, filter, limit));
+  }
+
+  private async tablesCore(tab: Tab, maxRows: number): Promise<PageTable[]> {
+    return (await tab.view.webContents.executeJavaScript(tablesScript(Math.max(1, maxRows)))) as PageTable[];
+  }
+  async tables(maxRows = 30, tabId?: string): Promise<PageTable[]> {
+    return this.withTab(tabId, (tab) => this.tablesCore(tab, maxRows));
   }
 
   /** Snapshots first so every interactive field carries a ref usable with `fill`. */
-  async forms(): Promise<PageForm[]> {
-    await this.snapshot();
-    const wc = this.requireActive().view.webContents;
-    return (await wc.executeJavaScript(FORMS_SCRIPT)) as PageForm[];
+  private async formsCore(tab: Tab): Promise<PageForm[]> {
+    await this.snapshotCore(tab);
+    return (await tab.view.webContents.executeJavaScript(FORMS_SCRIPT)) as PageForm[];
+  }
+  async forms(tabId?: string): Promise<PageForm[]> {
+    return this.withTab(tabId, (tab) => this.formsCore(tab));
   }
 
-  async pageInfo(): Promise<PageInfo> {
-    const tab = this.requireActive();
-    const info = (await tab.view.webContents.executeJavaScript(PAGE_INFO_SCRIPT)) as Omit<
-      PageInfo,
-      "cookiesCount"
-    >;
+  private async pageInfoCore(tab: Tab): Promise<PageInfo> {
+    const info = (await tab.view.webContents.executeJavaScript(PAGE_INFO_SCRIPT)) as Omit<PageInfo, "cookiesCount">;
     let cookiesCount = 0;
     try {
       const url = info.url || tab.view.webContents.getURL();
@@ -1728,12 +1858,19 @@ export class BrowserHub {
     }
     return { ...info, cookiesCount };
   }
+  async pageInfo(tabId?: string): Promise<PageInfo> {
+    return this.withTab(tabId, (tab) => this.pageInfoCore(tab));
+  }
 
-  async html(ref?: string, maxChars = 50_000): Promise<{ html: string; truncated: boolean; total: number }> {
+  private async htmlCore(
+    tab: Tab,
+    ref: string | undefined,
+    maxChars: number,
+  ): Promise<{ html: string; truncated: boolean; total: number }> {
     const cap = Math.max(1, Math.min(maxChars, 50_000));
     // Sliced in the page: a large DOM serializes to megabytes, and all but `cap` of it would
     // cross the IPC boundary only to be thrown away here.
-    const value = (await this.exec(htmlScript(ref ?? null, cap))) as {
+    const value = (await this.exec(tab, htmlScript(ref ?? null, cap))) as {
       html: string;
       truncated: boolean;
       total: number;
@@ -1741,13 +1878,15 @@ export class BrowserHub {
     if (value === null) throw new Error(`No element with ref ${ref}. Call snapshot first.`);
     return value;
   }
+  async html(ref?: string, maxChars = 50_000, tabId?: string): Promise<{ html: string; truncated: boolean; total: number }> {
+    return this.withTab(tabId, (tab) => this.htmlCore(tab, ref, maxChars));
+  }
 
   /**
    * Text of the PDF in the tab, or of the page printed to PDF. A real PDF is refetched with
    * `net.fetch` because the built-in viewer's DOM holds no text.
    */
-  async pdfText(): Promise<{ title: string; text: string; pages?: number }> {
-    const tab = this.requireActive();
+  private async pdfTextCore(tab: Tab): Promise<{ title: string; text: string; pages?: number }> {
     const wc = tab.view.webContents;
     const url = wc.getURL();
     const isPdf =
@@ -1777,6 +1916,10 @@ export class BrowserHub {
     }
     const pages = pdfPageCount(buf);
     return { title: wc.getTitle() || url, text, pages: pages || undefined };
+  }
+
+  async pdfText(tabId?: string): Promise<{ title: string; text: string; pages?: number }> {
+    return this.withTab(tabId, (tab) => this.pdfTextCore(tab));
   }
 
   async searchWeb(query: string): Promise<{ title: string; url: string; snippet: string }[]> {
@@ -1891,7 +2034,7 @@ export class BrowserHub {
 
   async startTracing(tracePath: string): Promise<boolean> {
     try {
-      const page = await this.playwrightPage();
+      const page = await this.playwrightPage(this.requireActive());
       if (!page) return false;
       await page.context().tracing.start({ screenshots: true, snapshots: true });
       (this as unknown as { _tracePath?: string })._tracePath = tracePath;
@@ -1903,7 +2046,7 @@ export class BrowserHub {
 
   async stopTracing(): Promise<void> {
     try {
-      const page = await this.playwrightPage();
+      const page = await this.playwrightPage(this.requireActive());
       const dest = (this as unknown as { _tracePath?: string })._tracePath;
       if (page && dest) {
         await page.context().tracing.stop({ path: dest });
@@ -2340,7 +2483,9 @@ export class BrowserHub {
     const read = key
       ? `s.getItem(${JSON.stringify(key)})`
       : `Object.fromEntries(Object.keys(s).map((k) => [k, s.getItem(k)]))`;
-    const raw = String(await this.exec(`(() => { const s = window.${store}; return JSON.stringify(${read}); })()`));
+    const raw = String(
+      await this.exec(this.requireActive(), `(() => { const s = window.${store}; return JSON.stringify(${read}); })()`),
+    );
     if (raw.length <= maxChars) return raw;
     return `${raw.slice(0, maxChars)}\n[truncated at ${maxChars} chars]`;
   }
@@ -2352,7 +2497,7 @@ export class BrowserHub {
       value === null
         ? `removeItem(${JSON.stringify(key)})`
         : `setItem(${JSON.stringify(key)}, ${JSON.stringify(value)})`;
-    await this.exec(`(() => { window.${store}.${call}; return true; })()`);
+    await this.exec(this.requireActive(), `(() => { window.${store}.${call}; return true; })()`);
   }
 
   /** No origin wipes the whole session (cookies, storage, caches). */
@@ -2389,12 +2534,25 @@ export class BrowserHub {
     return { page, root };
   }
 
+  /**
+   * Prefers a Playwright-driven action, falling back to a plain DOM script when Playwright is
+   * not attached to `tab` — or when `tab` is not the one currently attached to the window.
+   *
+   * A `BrowserView` that is not attached never produces a new compositor frame (confirmed:
+   * `boundingBox()` on it resolves instantly with correct coordinates, but a real synthetic
+   * click or keystroke dispatched at it is silently swallowed rather than delivered — even
+   * with Playwright's `force` option, which only skips *waiting*, not delivery). The fallback
+   * below never depends on that: `element.click()` / setting `.value` runs entirely inside the
+   * page's own script and fires the exact same events — including native default actions like
+   * form submission — a real interaction would, so a background tab always takes this path
+   * instead of a Playwright action that would report success while doing nothing.
+   */
   private async withPage(
     tab: Tab,
     pwFn: (page: PwPage, root: PwLocatorRoot) => Promise<void>,
     fallback: () => Promise<void>,
   ): Promise<void> {
-    const target = await this.pwTarget(tab);
+    const target = tab.id === this.activeId ? await this.pwTarget(tab) : null;
     if (target) {
       await pwFn(target.page, target.root);
       return;
