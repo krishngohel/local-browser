@@ -1448,26 +1448,33 @@ This is a refactor of `BrowserHub`'s internals in `src/main/browser.ts`. It has 
 - Test: `scripts/test-tools.mjs`
 
 **Interfaces:**
-- Produces: `Tab.osr: boolean` field; `BrowserHub.createAppsSession(urls: string[]): { tabIds: string[] }`, `BrowserHub.endAppsSession(opts: { close: boolean }): void`; IPC event `grid:frame` with `{ tabId: string, dataUrl: string, width: number, height: number }`; tools `apps_session_start`, `apps_session_end`.
-- Consumes: `createTab`'s existing structure (`src/main/browser.ts:529-574`), `withTab`/`xCore` machinery from Tasks 1-2 (OSR tabs are ordinary `Tab`s for every read/interact tool — no changes needed there).
+- Produces: `Tab.osr: boolean` field, `Tab.view` widened to `BrowserView | BrowserWindow`; `BrowserHub.createAppsSession(urls: string[]): { tabIds: string[] }`, `BrowserHub.endAppsSession(opts: { close: boolean }): void`; IPC event `grid:frame` with `{ tabId: string, dataUrl: string, width: number, height: number }`; tools `apps_session_start`, `apps_session_end`.
+- Consumes: `createTab`'s existing structure (`src/main/browser.ts:529-574`), `withTab`/`xCore` machinery from Tasks 1-2 (OSR tabs are ordinary `Tab`s for every read/interact tool — no changes needed there, since they only ever touch `tab.view.webContents`, which both `BrowserView` and `BrowserWindow` expose identically).
+- **Design correction (2026-08-29):** OSR tabs use a hidden `BrowserWindow`, not an offscreen `BrowserView` — see Step 1's "CORRECTED DESIGN" note for why. Task 8 (the grid renderer) is unaffected: the `grid:frame` IPC contract is identical either way.
 
 - [ ] **Step 1: Add `osr` to the `Tab` type and an OSR-aware tab constructor**
 
-  Add `osr: boolean;` to the `Tab` type (`src/main/browser.ts:115-143`, next to `incognito`).
+  **CORRECTED DESIGN (2026-08-29, after Task 7's first implementation attempt):** the plan originally specified `new BrowserView({ webPreferences: { offscreen: true } })`. This was **verified false** against this project's actual Electron version (36.9.5): a detached offscreen `BrowserView` produces zero `paint` events and a 0×0 `capturePage()` — silently, with no thrown error (`isOffscreen()` and `isPainting()` both report `true` regardless). The verified working alternative is a **hidden `BrowserWindow`** (`show: false`, `webPreferences: { offscreen: true, ... }`), which does stream real `paint` frames. Use that instead everywhere this step (and Step 3) says `BrowserView`.
+
+  This widens `Tab.view`'s type from `BrowserView` to `BrowserView | BrowserWindow`. Every existing call site only ever uses `tab.view.webContents`, which both types expose identically, so this change is additive, not a rewrite — but grep for any place that calls a `BrowserView`-only method directly on `tab.view` (e.g. `this.window.addBrowserView(tab.view)`/`removeBrowserView(tab.view)` in `selectTab`/`closeTab`) and guard those specifically on `tab.osr` rather than assuming `tab.view` is always a `BrowserView`.
+
+  Add `osr: boolean;` to the `Tab` type (`src/main/browser.ts:115-143`, next to `incognito`), and widen `view: BrowserView;` to `view: BrowserView | BrowserWindow;`.
 
   Add a new method next to `createTab` (`src/main/browser.ts:529`):
 
   ```ts
   /**
-   * An OSR tab never attaches its BrowserView to the window (offscreen content has no native
-   * surface to attach) — it exists purely to stream `paint` frames to the grid. Every read/
-   * interact tool works on it unchanged, since they all operate on `tab.view.webContents`.
+   * An OSR tab is a hidden BrowserWindow (show: false, offscreen: true), never the window's
+   * attached BrowserView — offscreen BrowserViews do not paint on this Electron version
+   * (verified: zero paint events, 0x0 capturePage, no thrown error). It exists purely to stream
+   * `paint` frames to the grid. Every read/interact tool works on it unchanged, since they all
+   * operate on `tab.view.webContents`, which BrowserWindow exposes identically to BrowserView.
    */
   private createOsrTab(url: string): string {
-    if (!this.window) throw new Error("Window not ready");
     const id = `tab-${++this.seq}`;
     const partition = partitionName();
-    const view = new BrowserView({
+    const win = new BrowserWindow({
+      show: false,
       webPreferences: {
         partition,
         sandbox: true,
@@ -1477,9 +1484,10 @@ This is a refactor of `BrowserHub`'s internals in `src/main/browser.ts`. It has 
         offscreen: true,
       },
     });
+    win.webContents.setFrameRate(12); // matches forwardGridFrame's throttle; avoid rendering faster than we forward
     const tab: Tab = {
       id,
-      view,
+      view: win,
       console: [],
       networkFailures: [],
       network: [],
@@ -1492,16 +1500,15 @@ This is a refactor of `BrowserHub`'s internals in `src/main/browser.ts`. It has 
       snapshotByRef: new Map(),
       osr: true,
     };
-    installChromePageShim(view.webContents);
+    installChromePageShim(win.webContents);
     this.attachListeners(tab);
     this.tabs.set(id, tab);
     this.order.push(id);
-    // No addBrowserView, no selectTab: this tab is never the visually attached one.
-    view.webContents.on("paint", (_event, _dirty, image) => {
+    win.webContents.on("paint", (_event, _dirty, image) => {
       this.forwardGridFrame(id, image);
     });
-    view.webContents.startPainting?.();
-    void view.webContents.loadURL(url);
+    win.webContents.startPainting();
+    void win.webContents.loadURL(url);
     this.onChange();
     return id;
   }
@@ -1510,6 +1517,10 @@ This is a refactor of `BrowserHub`'s internals in `src/main/browser.ts`. It has 
   Add `osr: false` to the object literal in the existing `createTab` (`src/main/browser.ts:549-562`) so the `Tab` type stays fully satisfied.
 
   Adjust `selectTab` (`src/main/browser.ts:585-620`) to refuse attaching an OSR tab as the primary view — add `if (tab.osr) throw new Error("OSR tabs render in the grid, not the main view.");` right after `const tab = this.requireTab(id);`.
+
+  Adjust `closeTab` to close an OSR tab's hidden `BrowserWindow` directly (`tab.view.destroy()` or `.close()`, guarded on `tab.osr`) rather than calling `this.window.removeBrowserView(tab.view)` on it — a `BrowserWindow` is not a valid argument to `removeBrowserView`. (Note: the original brief claimed the existing `removeBrowserView` call was already try/caught and would harmlessly no-op for a never-attached view — verify this directly in the current `closeTab` body rather than trusting that claim; Task 7's first implementation attempt found the call is NOT guarded at the line in question, so an OSR tab must be routed to the `BrowserWindow`-appropriate cleanup path explicitly, not merely rely on a catch.)
+
+  **Audit app-quit semantics.** Hidden OSR `BrowserWindow`s appear in Electron's `BrowserWindow.getAllWindows()` and count toward `window-all-closed`/quit logic. Find wherever this app currently decides to quit (search for `window-all-closed` in `src/main/index.ts`) and confirm an open OSR tab does not either (a) prevent the app from quitting when the user closes the real main window, or (b) get force-closed unexpectedly by existing quit logic while a session is active. Adjust that logic to count only the real main window, not OSR tabs' hidden windows, if it currently doesn't.
 
 - [ ] **Step 2: Throttle and forward paint frames over IPC**
 
