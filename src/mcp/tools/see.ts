@@ -10,11 +10,11 @@ export function registerSee(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "screenshot",
-    "Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document.",
-    { fullPage: z.boolean().optional() },
-    async ({ fullPage }) => {
+    "Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document. Optionally target a specific tabId (see tabs_list).",
+    { fullPage: z.boolean().optional(), tabId: z.string().optional() },
+    async ({ fullPage, tabId }) => {
       try {
-        const view = await hub.captureForModel({ fullPage: Boolean(fullPage) });
+        const view = await hub.captureForModel({ fullPage: Boolean(fullPage), tabId });
         const dest = hub.saveCapture(view.png);
         const caption = `Photo of ${hub.activeUrl()} (${view.width}×${view.height}). Saved PNG to ${dest}`;
         if (!getTransferPrefs().screenshotPhoto) {
@@ -31,14 +31,14 @@ export function registerSee(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "watch",
-    "Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500).",
-    { durationMs: z.number().optional(), maxFrames: z.number().optional() },
-    async ({ durationMs, maxFrames }) => {
+    "Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500). Optionally target a specific tabId (see tabs_list).",
+    { durationMs: z.number().optional(), maxFrames: z.number().optional(), tabId: z.string().optional() },
+    async ({ durationMs, maxFrames, tabId }) => {
       try {
         if (!getTransferPrefs().watchFrames) {
           return text("Live feed frames are off in Echo Settings → Transfers.");
         }
-        const clip = await hub.watch({ durationMs, maxFrames });
+        const clip = await hub.watch({ durationMs, maxFrames, tabId });
         const times = clip.frames.map((frame) => `${frame.tMs}ms`).join(", ");
         const motion =
           clip.frames.length <= 1

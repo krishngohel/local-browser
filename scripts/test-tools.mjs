@@ -439,6 +439,55 @@ try {
     assert.equal((await json("tabs_list")).length, before.length);
   });
 
+  await check("cross-tab concurrency: overlapping type/find never clobber another tab's refs", async () => {
+    // Two tabs on the same fixture shape (like two job-application forms open side by side),
+    // distinguished by query string so they are genuinely different navigations.
+    const openedA = await ok("tabs_new", { url: `${FX}/forms.html?tab=a` });
+    const idA = /tab-\d+/.exec(openedA.text)?.[0];
+    assert.ok(idA, `no tab id in "${openedA.text}"`);
+    const openedB = await ok("tabs_new", { url: `${FX}/forms.html?tab=b` });
+    const idB = /tab-\d+/.exec(openedB.text)?.[0];
+    assert.ok(idB, `no tab id in "${openedB.text}"`);
+
+    await ok("wait_for", { text: "Form fixture", tabId: idA });
+    await ok("wait_for", { text: "Form fixture", tabId: idB });
+
+    const findRefOnTab = async (tabId, label) => {
+      const found = await ok("find", { label, tabId });
+      return refOf(found.text, `${label} field on ${tabId}`);
+    };
+    const nameRefA = await findRefOnTab(idA, "Name");
+    const nameRefB = await findRefOnTab(idB, "Name");
+
+    // Fire both `type` calls without awaiting the first: the per-tab queue (not one global
+    // lock) must let A and B run concurrently while keeping each tab's own DOM untouched by
+    // the other.
+    const typeA = ok("type", { ref: nameRefA, text: "Ada TabA", tabId: idA });
+    const typeB = ok("type", { ref: nameRefB, text: "Grace TabB", tabId: idB });
+    await Promise.all([typeA, typeB]);
+
+    const nameValue = (forms) => forms[0]?.fields.find((f) => f.name === "name")?.value;
+    assert.equal(nameValue(await json("forms", { tabId: idA })), "Ada TabA", "tab A's own value");
+    assert.equal(nameValue(await json("forms", { tabId: idB })), "Grace TabB", "tab B's own value");
+
+    const submitRefA = refOf((await ok("find", { text: "Send form", tabId: idA })).text, "submit button on tab A");
+
+    // A fresh `find` on tab B rebuilds ITS OWN snapshotByRef map. If refs were kept in one
+    // shared place instead of per tab, this would invalidate or silently repoint tab A's ref.
+    await ok("find", { label: "Color", tabId: idB });
+
+    await ok("click", { ref: submitRefA, tabId: idA });
+    await ok("wait_for", { text: "submitted: Ada TabA", tabId: idA });
+
+    // Tab B was never submitted and still shows its own typed value, untouched by tab A's click.
+    assert.equal(nameValue(await json("forms", { tabId: idB })), "Grace TabB", "tab B still holds its own value");
+    const outB = await ok("get_text", { tabId: idB });
+    assert.doesNotMatch(outB.text, /submitted/, "tab B must not show tab A's submission");
+
+    await ok("tabs_close", { id: idA });
+    await ok("tabs_close", { id: idB });
+  });
+
   await check("asserts + visual + perf + network", async () => {
     await ok("navigate", { url: `${FX}/perf.html` });
     await ok("wait_for", { text: "settled" });

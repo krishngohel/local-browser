@@ -155,8 +155,8 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
 
   define(server, deps, "frames", "List iframes on the page.", {}, async () => {
     try {
-      const frames = hub.listFrames();
-      const selected = hub.selectedFrame();
+      const frames = await hub.listFrames();
+      const selected = await hub.selectedFrame();
       return text(
         JSON.stringify(
           { selected, frames: frames.map((f) => ({ ...f, main: f.index === 0 })) },
@@ -177,7 +177,7 @@ export function registerInteract(server: McpServer, deps: ToolDeps): void {
     { index: z.number().int().min(0).optional() },
     async ({ index }) => {
       try {
-        const frame = hub.selectFrame(index ?? null);
+        const frame = await hub.selectFrame(index ?? null);
         if (frame.index === null) return text("Back to the main frame.");
         return text(`Frame ${frame.index} selected: ${frame.url || "(no url)"}. Call snapshot for fresh refs.`);
       } catch (e) {

@@ -53,38 +53,38 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "snapshot",
     group: "toolsBrowse",
-    description: "Interactive elements plus a photo of the visible page. Use this to see layout, spacing, and colors. Use refs (e0, e1, …) with click/type/fill/select.",
+    description: "Interactive elements plus a photo of the visible page. Use this to see layout, spacing, and colors. Use refs (e0, e1, …) with click/type/fill/select. Optionally target a specific tabId (see tabs_list).",
   },
   {
     name: "click",
     group: "toolsBrowse",
-    description: "Click an element from the latest snapshot by ref (e.g. e3). Recorded if recording is on.",
+    description: "Click an element from the latest snapshot by ref (e.g. e3). Recorded if recording is on. Optionally target a specific tabId (see tabs_list).",
   },
   {
     name: "type",
     group: "toolsBrowse",
-    description: "Type into an element from the snapshot. Set submit to press Enter. Recorded if recording is on.",
+    description: "Type into an element from the snapshot. Set submit to press Enter. Recorded if recording is on. Optionally target a specific tabId (see tabs_list).",
   },
-  { name: "fill", group: "toolsBrowse", description: "Clear and fill an input from the snapshot." },
-  { name: "press", group: "toolsBrowse", description: "Press a keyboard key (Playwright key name, e.g. Enter, Tab, Control+l)." },
-  { name: "scroll", group: "toolsBrowse", description: "Scroll the page. Positive deltaY scrolls down." },
-  { name: "select", group: "toolsBrowse", description: "Choose an option in a <select> from the snapshot." },
+  { name: "fill", group: "toolsBrowse", description: "Clear and fill an input from the snapshot. Optionally target a specific tabId (see tabs_list)." },
+  { name: "press", group: "toolsBrowse", description: "Press a keyboard key (Playwright key name, e.g. Enter, Tab, Control+l). Optionally target a specific tabId (see tabs_list)." },
+  { name: "scroll", group: "toolsBrowse", description: "Scroll the page. Positive deltaY scrolls down. Optionally target a specific tabId (see tabs_list)." },
+  { name: "select", group: "toolsBrowse", description: "Choose an option in a <select> from the snapshot. Optionally target a specific tabId (see tabs_list)." },
   {
     name: "wait_for",
     group: "toolsBrowse",
-    description: "Wait until the page contains text, or until loading finishes if text is omitted.",
+    description: "Wait until the page contains text, or until loading finishes if text is omitted. Optionally target a specific tabId (see tabs_list).",
   },
 
   // Screenshots and live feed
   {
     name: "screenshot",
     group: "toolsSee",
-    description: "Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document.",
+    description: "Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document. Optionally target a specific tabId (see tabs_list).",
   },
   {
     name: "watch",
     group: "toolsSee",
-    description: "Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500).",
+    description: "Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500). Optionally target a specific tabId (see tabs_list).",
   },
 
   // Search and article text
@@ -149,32 +149,32 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
   {
     name: "get_text",
     group: "toolsRead",
-    description: "Visible text of the page, or of one element by snapshot ref. Capped at 40,000 chars.",
+    description: "Visible text of the page, or of one element by snapshot ref. Optionally target a specific tabId (see tabs_list). Capped at 40,000 chars.",
   },
   {
     name: "find",
     group: "toolsRead",
-    description: "Find interactive elements by visible text, role, or label. Returns snapshot refs you can click/type.",
+    description: "Find interactive elements by visible text, role, or label. Returns snapshot refs you can click/type. Optionally target a specific tabId (see tabs_list).",
   },
-  { name: "links", group: "toolsRead", description: "List links on the page (text + href), optional substring filter, up to 300." },
+  { name: "links", group: "toolsRead", description: "List links on the page (text + href), optional substring filter, up to 300. Optionally target a specific tabId (see tabs_list)." },
   {
     name: "tables",
     group: "toolsRead",
-    description: "Extract every <table> on the page as markdown (headers + up to maxRows rows each).",
+    description: "Extract every <table> on the page as markdown (headers + up to maxRows rows each). Optionally target a specific tabId (see tabs_list).",
   },
   {
     name: "forms",
     group: "toolsRead",
-    description: "List forms and their fields (name, type, value, label, ref) so you can fill them.",
+    description: "List forms and their fields (name, type, value, label, ref) so you can fill them. Optionally target a specific tabId (see tabs_list).",
   },
   {
     name: "page_info",
     group: "toolsRead",
-    description: "Title, URL, meta description, language, canonical, h1s, and element counts for the page.",
+    description: "Title, URL, meta description, language, canonical, h1s, and element counts for the page. Optionally target a specific tabId (see tabs_list).",
   },
-  { name: "html", group: "toolsRead", description: "Outer HTML of the document or of one element by ref. Capped at 50,000 chars." },
-  { name: "pdf_text", group: "toolsRead", description: "Text of the current PDF, or of the page printed to PDF." },
-  { name: "captcha_check", group: "toolsRead", description: "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window." },
+  { name: "html", group: "toolsRead", description: "Outer HTML of the document or of one element by ref. Optionally target a specific tabId (see tabs_list). Capped at 50,000 chars." },
+  { name: "pdf_text", group: "toolsRead", description: "Text of the current PDF, or of the page printed to PDF. Optionally target a specific tabId (see tabs_list)." },
+  { name: "captcha_check", group: "toolsRead", description: "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. Optionally target a specific tabId (see tabs_list)." },
 
   // Interaction depth
   { name: "hover", group: "toolsInteract", description: "Hover an element by ref (opens menus, shows tooltips)." },

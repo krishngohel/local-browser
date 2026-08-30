@@ -368,21 +368,21 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `navigate` | Navigate the active tab (or a given tab) to a URL. Bare words are treated as a search. Recorded if recording is on. |
 | `back` | Go back in history on the active tab. |
 | `reload` | Reload the active tab. |
-| `snapshot` | Interactive elements plus a photo of the visible page. Use this to see layout, spacing, and colors. Use refs (e0, e1, …) with click/type/fill/select. |
-| `click` | Click an element from the latest snapshot by ref (e.g. e3). Recorded if recording is on. |
-| `type` | Type into an element from the snapshot. Set submit to press Enter. Recorded if recording is on. |
-| `fill` | Clear and fill an input from the snapshot. |
-| `press` | Press a keyboard key (Playwright key name, e.g. Enter, Tab, Control+l). |
-| `scroll` | Scroll the page. Positive deltaY scrolls down. |
-| `select` | Choose an option in a <select> from the snapshot. |
-| `wait_for` | Wait until the page contains text, or until loading finishes if text is omitted. |
+| `snapshot` | Interactive elements plus a photo of the visible page. Use this to see layout, spacing, and colors. Use refs (e0, e1, …) with click/type/fill/select. Optionally target a specific tabId (see tabs_list). |
+| `click` | Click an element from the latest snapshot by ref (e.g. e3). Recorded if recording is on. Optionally target a specific tabId (see tabs_list). |
+| `type` | Type into an element from the snapshot. Set submit to press Enter. Recorded if recording is on. Optionally target a specific tabId (see tabs_list). |
+| `fill` | Clear and fill an input from the snapshot. Optionally target a specific tabId (see tabs_list). |
+| `press` | Press a keyboard key (Playwright key name, e.g. Enter, Tab, Control+l). Optionally target a specific tabId (see tabs_list). |
+| `scroll` | Scroll the page. Positive deltaY scrolls down. Optionally target a specific tabId (see tabs_list). |
+| `select` | Choose an option in a <select> from the snapshot. Optionally target a specific tabId (see tabs_list). |
+| `wait_for` | Wait until the page contains text, or until loading finishes if text is omitted. Optionally target a specific tabId (see tabs_list). |
 
 ### Screenshots and live feed (2)
 
 | Tool | What it does |
 | --- | --- |
-| `screenshot` | Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document. |
-| `watch` | Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500). |
+| `screenshot` | Photograph the visible page and return the image so you can see the UI. Use this for visual QA, layout checks, and UI building. Optional fullPage captures the full document. Optionally target a specific tabId (see tabs_list). |
+| `watch` | Live feed: record the visible page for a short time and return ordered frames so you can see animations, transitions, hover, spinners, carousels, and video. Use this instead of screenshot when motion matters. durationMs 800–6000 (default 2500). Optionally target a specific tabId (see tabs_list). |
 
 ### Search and article text (2)
 
@@ -422,15 +422,15 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 
 | Tool | What it does |
 | --- | --- |
-| `get_text` | Visible text of the page, or of one element by snapshot ref. Capped at 40,000 chars. |
-| `find` | Find interactive elements by visible text, role, or label. Returns snapshot refs you can click/type. |
-| `links` | List links on the page (text + href), optional substring filter, up to 300. |
-| `tables` | Extract every <table> on the page as markdown (headers + up to maxRows rows each). |
-| `forms` | List forms and their fields (name, type, value, label, ref) so you can fill them. |
-| `page_info` | Title, URL, meta description, language, canonical, h1s, and element counts for the page. |
-| `html` | Outer HTML of the document or of one element by ref. Capped at 50,000 chars. |
-| `pdf_text` | Text of the current PDF, or of the page printed to PDF. |
-| `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. |
+| `get_text` | Visible text of the page, or of one element by snapshot ref. Optionally target a specific tabId (see tabs_list). Capped at 40,000 chars. |
+| `find` | Find interactive elements by visible text, role, or label. Returns snapshot refs you can click/type. Optionally target a specific tabId (see tabs_list). |
+| `links` | List links on the page (text + href), optional substring filter, up to 300. Optionally target a specific tabId (see tabs_list). |
+| `tables` | Extract every <table> on the page as markdown (headers + up to maxRows rows each). Optionally target a specific tabId (see tabs_list). |
+| `forms` | List forms and their fields (name, type, value, label, ref) so you can fill them. Optionally target a specific tabId (see tabs_list). |
+| `page_info` | Title, URL, meta description, language, canonical, h1s, and element counts for the page. Optionally target a specific tabId (see tabs_list). |
+| `html` | Outer HTML of the document or of one element by ref. Optionally target a specific tabId (see tabs_list). Capped at 50,000 chars. |
+| `pdf_text` | Text of the current PDF, or of the page printed to PDF. Optionally target a specific tabId (see tabs_list). |
+| `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these; if one is present, pause and ask the user to complete it in the Echo window. Optionally target a specific tabId (see tabs_list). |
 
 ### Interaction depth (11) — off by default
 
