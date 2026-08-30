@@ -689,6 +689,13 @@ if (!gotLock) {
     hub.setHomeUrl(getSettings().homeUrl);
     hub.setHumanPacing(getSettings().humanPacing);
     hub.setShowAssistantCursor(getSettings().showAssistantCursor);
+    // OSR tabs stream their frames to the chrome, which draws them as grid tiles. Dropped
+    // silently when the window is down (mid-quit, or before it exists): a lost tile frame is
+    // replaced by the next one ~80ms later.
+    hub.setGridFrameListener((tabId, dataUrl, width, height) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send("grid:frame", { tabId, dataUrl, width, height });
+    });
     // Present as the plain Chromium Echo genuinely is, so the Electron/app-name tokens in the
     // default UA don't get pages blocked or downgraded. Must be set before any tab loads.
     app.userAgentFallback = cleanChromeUserAgent(process.platform, process.versions.chrome);

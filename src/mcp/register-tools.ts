@@ -12,6 +12,7 @@ import { registerInteract } from "./tools/interact";
 import { registerState } from "./tools/state";
 import { registerQa } from "./tools/qa";
 import { registerProfile } from "./tools/profile";
+import { registerApps } from "./tools/apps";
 
 export type { ToolDeps } from "./tools/_helpers";
 export { refreshToolAvailability } from "./tools/_helpers";
@@ -39,4 +40,5 @@ export function registerTools(server: McpServer, deps: ToolDeps): void {
   registerState(server, deps);
   registerQa(server, deps);
   registerProfile(server, deps);
+  registerApps(server, deps);
 }

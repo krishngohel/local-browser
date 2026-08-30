@@ -239,6 +239,16 @@ export const TOOL_MANIFEST: ToolManifestEntry[] = [
     group: "toolsState",
     description: "Match the current tab's form fields (from the last forms() call) to the stored profile by label. Returns { ref, label, suggestedValue, confidence } for fields it's confident about; it never fills anything itself and never guesses for a field with no clear match — review each suggestion (or ask the user) before calling fill_form with the ones you accept. Optionally target a specific tabId.",
   },
+  {
+    name: "apps_session_start",
+    group: "toolsState",
+    description: "Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another.",
+  },
+  {
+    name: "apps_session_end",
+    group: "toolsState",
+    description: "End the current applications grid session. Set close to false to keep the tabs open as regular tabs instead of closing them (default: close them).",
+  },
 
   // Automation and QA
   {

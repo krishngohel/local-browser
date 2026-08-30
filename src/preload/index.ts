@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 contextBridge.exposeInMainWorld("lb", {
@@ -68,5 +68,11 @@ contextBridge.exposeInMainWorld("lb", {
   },
   onOpenPalette: (cb: () => void) => {
     ipcRenderer.on("open-palette", cb);
+  },
+  /** Frames from OSR ("applications" grid) tabs, ~12 per second per tile. */
+  onGridFrame: (cb: (frame: GridFrame) => void) => {
+    const listener = (_event: unknown, frame: GridFrame) => cb(frame);
+    ipcRenderer.on("grid:frame", listener);
+    return () => ipcRenderer.removeListener("grid:frame", listener);
   },
 });

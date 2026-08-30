@@ -32,7 +32,7 @@ const CDP_PORT = 9333;
 const MCP_PORT_PREFERRED = 18931;
 const MCP_PORT_SPAN = 10;
 /** Every tool Echo registers with all groups on and `evaluate` enabled. */
-const TOTAL_TOOLS = 74;
+const TOTAL_TOOLS = 76;
 /** The one tool the e2e run must not call: it hits live Google. */
 const SKIPPED = new Set(["search_web"]);
 
@@ -562,6 +562,53 @@ try {
     await ok("tabs_close", { id });
     await ok("tabs_select", { id: before[0].id });
     assert.equal((await json("tabs_list")).length, before.length);
+  });
+
+  await check("apps_session_start opens tabId-addressable OSR tabs; apps_session_end closes them", async () => {
+    const before = await json("tabs_list");
+    const { tabIds } = await json("apps_session_start", {
+      urls: [`${FX}/forms.html?app=1`, `${FX}/tables.html?app=2`],
+    });
+    assert.equal(tabIds.length, 2);
+
+    // The point of an OSR tab: it is an ordinary tab to every tabId-addressed tool even
+    // though it is never attached to the window. Frame delivery itself needs a real
+    // compositor, so this asserts addressability and lifecycle, not pixels.
+    await ok("wait_for", { text: "Form fixture", tabId: tabIds[0] });
+    const info = await json("page_info", { tabId: tabIds[0] });
+    assert.ok(info.title, `no title for OSR tab: ${JSON.stringify(info)}`);
+    assert.match(info.url, /app=1/);
+    // Second tab is independently addressable, not a shadow of the first.
+    const other = await json("page_info", { tabId: tabIds[1] });
+    assert.match(other.url, /app=2/);
+
+    // Closing the active tab while a session is open must fall back to a real tab. OSR tabs
+    // sit at the end of the strip order but can never be attached, so picking "the last tab"
+    // blindly would refuse and leave the window without a view.
+    const extra = await ok("tabs_new", { url: `${FX}/index.html` });
+    const extraId = /tab-\d+/.exec(extra.text)?.[0];
+    assert.ok(extraId, `no tab id in "${extra.text}"`);
+    await ok("tabs_close", { id: extraId });
+
+    // One session at a time, and no more than six tabs in it.
+    const second = await call("apps_session_start", { urls: [`${FX}/index.html`] });
+    assert.equal(second.isError, true, "a second concurrent session should be refused");
+    const tooMany = await call("apps_session_start", {
+      urls: Array.from({ length: 7 }, () => `${FX}/index.html`),
+    });
+    assert.equal(tooMany.isError, true, "more than 6 urls should be refused");
+
+    await ok("apps_session_end", {});
+    const remaining = (await json("tabs_list")).map((t) => t.id);
+    for (const id of tabIds) {
+      assert.equal(remaining.includes(id), false, `${id} survived apps_session_end`);
+    }
+    assert.equal(remaining.length, before.length);
+
+    // Ending a session leaves no session behind, so the next one starts cleanly.
+    const reopened = await json("apps_session_start", { urls: [`${FX}/index.html`] });
+    assert.equal(reopened.tabIds.length, 1);
+    await ok("apps_session_end", {});
   });
 
   await check("cross-tab concurrency: overlapping type/find never clobber another tab's refs", async () => {

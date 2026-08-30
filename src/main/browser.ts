@@ -116,13 +116,25 @@ export type PerfTiming = {
 
 type Tab = {
   id: string;
-  view: BrowserView;
+  /**
+   * A normal tab's `BrowserView`, or — for an OSR tab (`osr: true`) — the hidden
+   * `BrowserWindow` that streams its frames to the grid. Every tab-scoped method reaches the
+   * page through `view.webContents`, which both types expose identically; the handful of
+   * places that call a `BrowserView`-only method (`addBrowserView`/`removeBrowserView`,
+   * `setBounds`) all guard on `osr` first.
+   */
+  view: BrowserView | BrowserWindow;
   console: string[];
   networkFailures: string[];
   /** Ring of the last `NETWORK_LOG_CAP` requests this tab made, oldest first. */
   network: NetworkEntry[];
   favicon: string | null;
   incognito: boolean;
+  /**
+   * True for a tab in an "applications" grid session: rendered offscreen into `paint` frames
+   * the renderer draws as a grid tile, never attached to the window as the primary view.
+   */
+  osr: boolean;
   partition: string;
   /** Content-Type of the last main-frame response, for spotting PDFs. */
   contentType: string | null;
@@ -145,6 +157,15 @@ type Tab = {
 };
 
 const HOME_URL = "https://www.google.com/";
+/**
+ * Frame rate for OSR grid tiles. A form-filling grid needs to look live, not smooth, and
+ * every frame is a full data URL over IPC, so this stays deliberately low.
+ */
+const GRID_FPS = 12;
+/** Minimum gap between forwarded frames per tile, matching `GRID_FPS`. */
+const GRID_FRAME_MS = Math.floor(1000 / GRID_FPS);
+/** Most tabs one "applications" session may open at once. */
+const APPS_SESSION_CAP = 6;
 /**
  * One shared memory-only partition for every incognito tab (no `persist:` prefix). Cleared
  * when the last incognito tab closes — see `createTab` / `closeTab`.
@@ -219,6 +240,12 @@ export class BrowserHub {
   /** In-flight icon downloads, so several tabs on one site fetch it once. */
   private faviconPending = new Map<string, Promise<string>>();
   private thumbs = new Map<string, { at: number; data: string }>();
+  /** When each OSR tab last had a frame forwarded, for the `GRID_FRAME_MS` throttle. */
+  private lastGridFrameAt = new Map<string, number>();
+  private onGridFrame: (tabId: string, dataUrl: string, width: number, height: number) => void =
+    () => {};
+  /** Tab ids in the open "applications" session, in the order their URLs were given. Empty when none is open. */
+  private appsSessionTabIds: string[] = [];
   /** Electron's own CDP target id for each tab's webContents, once discovered (see `electronTargetId`). */
   private tabTargetIds = new Map<string, string>();
   /** Playwright Page -> its CDP target id, so repeat lookups don't pay another round trip. */
@@ -326,8 +353,11 @@ export class BrowserHub {
     if (!this.window) return;
     if (open) {
       for (const tab of this.tabs.values()) {
+        // OSR tabs are hidden windows, never attached to this one — nothing to detach, and
+        // they keep rendering into the grid while Settings is up.
+        if (tab.osr) continue;
         try {
-          this.window.removeBrowserView(tab.view);
+          this.window.removeBrowserView(tab.view as BrowserView);
         } catch {
           /* already detached */
         }
@@ -335,10 +365,11 @@ export class BrowserHub {
     } else {
       // `activeId` may name a tab that was closed while Settings was up, so fall back to the
       // last tab in the strip, and to a fresh one if the strip is somehow empty.
+      const attachable = this.attachableOrder();
       const id =
         this.activeId && this.tabs.has(this.activeId)
           ? this.activeId
-          : this.order[this.order.length - 1];
+          : attachable[attachable.length - 1];
       if (id) this.selectTab(id, { record: false });
       else this.createTab(this.homeUrl, { record: false });
     }
@@ -578,6 +609,7 @@ export class BrowserHub {
       network: [],
       favicon: null,
       incognito,
+      osr: false,
       partition,
       contentType: null,
       frameIndex: null,
@@ -598,6 +630,141 @@ export class BrowserHub {
   }
 
   /**
+   * A tab for the "applications" grid: a hidden `BrowserWindow` rendered offscreen, whose
+   * `paint` frames are forwarded to the renderer as grid tiles. It is never the window's
+   * attached `BrowserView`.
+   *
+   * A hidden window rather than an offscreen `BrowserView` because an offscreen `BrowserView`
+   * does not paint while detached on this Electron version (36.9.5): it emits zero `paint`
+   * events and `capturePage()` returns a 0x0 image, silently — `isOffscreen()` and
+   * `isPainting()` both report `true` regardless, so there is no error to catch. Offscreen
+   * rendering needs a compositor host, which a detached view has no way to get.
+   *
+   * Every read/interact tool works on an OSR tab unchanged: they all go through
+   * `tab.view.webContents`, which `BrowserWindow` exposes identically to `BrowserView`.
+   */
+  private createOsrTab(url: string): string {
+    const id = `tab-${++this.seq}`;
+    const partition = partitionName();
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: {
+        partition,
+        sandbox: true,
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: path.join(__dirname, "..", "preload", "page.js"),
+        offscreen: true,
+        // Same reason as `createTab`: an offscreen window is never foregrounded, and
+        // Chromium would otherwise throttle the page's own timers while the assistant
+        // works on it.
+        backgroundThrottling: false,
+      },
+    });
+    // Render no faster than `forwardGridFrame` forwards, so the throttle there drops
+    // almost nothing and the compositor is not doing work that gets thrown away.
+    win.webContents.setFrameRate(GRID_FPS);
+    const tab: Tab = {
+      id,
+      view: win,
+      console: [],
+      networkFailures: [],
+      network: [],
+      favicon: null,
+      incognito: false,
+      osr: true,
+      partition,
+      contentType: null,
+      frameIndex: null,
+      frameUrl: null,
+      snapshotByRef: new Map(),
+    };
+    installChromePageShim(win.webContents);
+    this.attachListeners(tab);
+    this.tabs.set(id, tab);
+    this.order.push(id);
+    win.webContents.on("paint", (_event, _dirty, image) => {
+      this.forwardGridFrame(id, image);
+    });
+    win.webContents.startPainting();
+    void win.webContents.loadURL(url);
+    this.onChange();
+    return id;
+  }
+
+  /** Where forwarded grid frames go — set by the main process to an IPC send to the chrome. */
+  setGridFrameListener(
+    fn: (tabId: string, dataUrl: string, width: number, height: number) => void,
+  ): void {
+    this.onGridFrame = fn;
+  }
+
+  /**
+   * `paint` fires per damaged region, which for an animating page is far more often than a
+   * grid tile needs redrawing — and each frame costs a base64 encode plus an IPC hop. The
+   * window is already rendering at `GRID_FPS`, so this mostly guards against bursts.
+   */
+  private forwardGridFrame(tabId: string, image: Electron.NativeImage): void {
+    const now = Date.now();
+    const last = this.lastGridFrameAt.get(tabId) ?? 0;
+    if (now - last < GRID_FRAME_MS) return;
+    this.lastGridFrameAt.set(tabId, now);
+    const size = image.getSize();
+    if (!size.width || !size.height) return;
+    this.onGridFrame(tabId, image.toDataURL(), size.width, size.height);
+  }
+
+  /**
+   * Open `urls` as a grid of OSR tabs the user can watch. Returns the tab ids in the order
+   * the URLs were given, for use with every tabId-addressed tool.
+   */
+  createAppsSession(urls: string[]): { tabIds: string[] } {
+    if (!this.window) throw new Error("Window not ready");
+    if (urls.length > APPS_SESSION_CAP) {
+      throw new Error(
+        `Applications sessions support up to ${APPS_SESSION_CAP} tabs at once, got ${urls.length}.`,
+      );
+    }
+    if (this.appsSessionTabIds.length) {
+      throw new Error("An applications session is already open. Call apps_session_end first.");
+    }
+    // Same policy as every other assistant-opened tab: no file:// or other local schemes.
+    const targets = urls.map((url) => {
+      if (!isAssistantNavigable(url)) throw new Error(ASSISTANT_NAV_REFUSAL);
+      return normalizeUrl(url);
+    });
+    const tabIds = targets.map((url) => this.createOsrTab(url));
+    this.appsSessionTabIds = tabIds;
+    this.onChange();
+    return { tabIds };
+  }
+
+  /**
+   * End the open session. By default the tabs are closed; `close: false` keeps them, but they
+   * stay OSR tabs — the grid is where they are visible.
+   */
+  endAppsSession(opts?: { close?: boolean }): void {
+    const ids = this.appsSessionTabIds;
+    this.appsSessionTabIds = [];
+    if (opts?.close === false) {
+      this.onChange();
+      return;
+    }
+    for (const id of ids) {
+      try {
+        this.closeTab(id);
+      } catch {
+        /* already gone */
+      }
+    }
+    this.onChange();
+  }
+
+  appsSessionTabs(): string[] {
+    return [...this.appsSessionTabIds];
+  }
+
+  /**
    * `createTab` for anything that is not the user typing: MCP tools, recording replay, and a
    * page calling `window.open`. Only web URLs get through — see `url-policy.ts`.
    */
@@ -609,6 +776,7 @@ export class BrowserHub {
   selectTab(id: string, opts?: { record?: boolean }): void {
     if (this.settingsOpen) return;
     const tab = this.requireTab(id);
+    if (tab.osr) throw new Error("OSR tabs render in the grid, not the main view.");
     const switched = this.activeId !== id;
     // Last chance to photograph the outgoing tab: once its view is detached below,
     // capturePage() never settles.
@@ -616,15 +784,16 @@ export class BrowserHub {
     this.activeId = id;
     if (!this.window) return;
     for (const other of this.tabs.values()) {
-      if (other.id !== id) {
+      // An OSR tab's view is a hidden window, never attached, so there is nothing to detach.
+      if (other.id !== id && !other.osr) {
         try {
-          this.window.removeBrowserView(other.view);
+          this.window.removeBrowserView(other.view as BrowserView);
         } catch {
           /* already detached */
         }
       }
     }
-    this.window.addBrowserView(tab.view);
+    this.window.addBrowserView(tab.view as BrowserView);
     this.layout();
     tab.view.webContents.focus();
     if (switched && opts?.record !== false) {
@@ -648,9 +817,27 @@ export class BrowserHub {
     // state. Open a fresh normal tab first and then close the old one through the ordinary
     // path below, so all of that goes away and the shared incognito session is cleared when
     // the tab being closed was the last incognito one.
-    if (this.tabs.size <= 1) this.createTab(this.homeUrl, { record: false });
-    this.window?.removeBrowserView(tab.view);
-    tab.view.webContents.close();
+    // Only tabs the user can actually switch to count here: a window left with nothing but
+    // OSR tabs would show a blank content area, since none of them can be attached. Counted
+    // over `tabs` rather than `order` so it holds even if the two ever drift.
+    let attachableLeft = 0;
+    for (const other of this.tabs.values()) {
+      if (!other.osr && other.id !== id) attachableLeft++;
+    }
+    if (attachableLeft === 0) this.createTab(this.homeUrl, { record: false });
+    if (tab.osr) {
+      // An OSR tab's view is a hidden BrowserWindow: it was never attached, and it is not a
+      // valid argument to `removeBrowserView`. Closing only its webContents would strand the
+      // window itself, so destroy the window and stop tracking its frame throttle.
+      this.lastGridFrameAt.delete(id);
+      (tab.view as BrowserWindow).destroy();
+    } else {
+      this.window?.removeBrowserView(tab.view as BrowserView);
+      tab.view.webContents.close();
+    }
+    // Closing a session tab by hand (tabs_close, or the page closing itself) must not leave
+    // the session half-open and blocking the next `apps_session_start`.
+    this.appsSessionTabIds = this.appsSessionTabIds.filter((x) => x !== id);
     this.tabs.delete(id);
     this.thumbs.delete(id);
     this.dialogHooked.delete(id);
@@ -660,15 +847,19 @@ export class BrowserHub {
     this.order = this.order.filter((x) => x !== id);
     if (tab.incognito) void this.releaseIncognitoIfLast();
     if (this.activeId === id) {
-      const next = this.order[this.order.length - 1];
+      const remaining = this.attachableOrder();
+      const next = remaining[remaining.length - 1];
       if (this.settingsOpen) {
         // `selectTab` does nothing while Settings is up, which would leave `activeId` pointing
         // at the tab just deleted. Move the pointer now, without touching the views (they are
         // all detached anyway); `setSettingsOpen(false)` attaches the right one.
         this.activeId = next ?? null;
         this.onChange();
-      } else {
+      } else if (next) {
         this.selectTab(next, { record: false });
+      } else {
+        this.activeId = null;
+        this.onChange();
       }
     } else {
       this.onChange();
@@ -709,24 +900,38 @@ export class BrowserHub {
     });
   }
 
+  /**
+   * The tabs the user can actually switch to: `order` minus OSR tabs, which have no attached
+   * view and are watched in the grid instead. Every path that picks a tab to *attach* —
+   * Ctrl+Tab, Ctrl+1..9, and closing the active tab — must choose from this rather than from
+   * `order`, or it can land on an OSR tab and hit `selectTab`'s refusal.
+   *
+   * `listTabs` deliberately still reports every tab, OSR included: the assistant addresses
+   * them by tabId like any other.
+   */
+  private attachableOrder(): string[] {
+    return this.order.filter((id) => !this.tabs.get(id)?.osr);
+  }
+
   /** Steps `delta` places through the strip, wrapping at both ends (Ctrl+Tab). */
   cycleTab(delta: number): void {
-    if (this.order.length < 2 || !this.activeId) return;
-    const at = this.order.indexOf(this.activeId);
+    const order = this.attachableOrder();
+    if (order.length < 2 || !this.activeId) return;
+    const at = order.indexOf(this.activeId);
     if (at < 0) return;
-    const n = this.order.length;
+    const n = order.length;
     const next = (((at + delta) % n) + n) % n;
-    this.selectTab(this.order[next], { record: false });
+    this.selectTab(order[next], { record: false });
   }
 
   /** Selects the tab in slot `index`. Out-of-range slots do nothing, as in Chrome. */
   selectTabIndex(index: number): void {
-    const id = this.order[index];
+    const id = this.attachableOrder()[index];
     if (id && id !== this.activeId) this.selectTab(id, { record: false });
   }
 
   tabCount(): number {
-    return this.order.length;
+    return this.attachableOrder().length;
   }
 
   /** Moves a tab to `index` in the strip. Out-of-range indexes clamp to the ends. */
@@ -2132,10 +2337,13 @@ export class BrowserHub {
   layout(): void {
     if (!this.window || !this.activeId || this.settingsOpen) return;
     const tab = this.tabs.get(this.activeId);
-    if (!tab) return;
+    // `selectTab` refuses OSR tabs, so the active tab is always an attached BrowserView; the
+    // guard is here so the cast below stays honest if that ever changes.
+    if (!tab || tab.osr) return;
+    const view = tab.view as BrowserView;
     const { width, height } = this.window.getContentBounds();
-    tab.view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
-    tab.view.setBounds({
+    view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
+    view.setBounds({
       x: 0,
       y: this.chromeHeight + this.overlayHeight,
       width: Math.max(0, Math.round(width)),

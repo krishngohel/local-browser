@@ -454,7 +454,7 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `evaluate` | Runs JavaScript in the page and returns the JSON result. Enabled by the user in Settings → Transfers. |
 | `fill_form` | Fill several fields from the latest snapshot/forms call in one round-trip: { ref, value } pairs. Text/textarea fields are typed, <select> fields choose the option matching value, checkboxes/radios are clicked only when value is truthy (already-checked boxes are not unchecked). Returns a per-field { ref, ok, error? } result so one bad ref does not block the rest. Optionally target a specific tabId. |
 
-### Sessions and state (12) — off by default
+### Sessions and state (14) — off by default
 
 | Tool | What it does |
 | --- | --- |
@@ -470,6 +470,8 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `profile_get` | Read the stored applicant profile (name, email, phone, address, links). Empty fields mean nothing is stored yet. |
 | `profile_set` | Save or update applicant profile fields (name, email, phone, address, links) so fill_form/profile_suggest_fill can reuse them across applications. Only given fields are changed. |
 | `profile_suggest_fill` | Match the current tab's form fields (from the last forms() call) to the stored profile by label. Returns { ref, label, suggestedValue, confidence } for fields it's confident about; it never fills anything itself and never guesses for a field with no clear match — review each suggestion (or ask the user) before calling fill_form with the ones you accept. Optionally target a specific tabId. |
+| `apps_session_start` | Open up to 6 URLs as a live grid the user can watch (Echo switches into grid view). Returns the tabId for each, in the same order as the URLs given, for use with every tabId-addressed tool. Only one session at a time — call apps_session_end first to start another. |
+| `apps_session_end` | End the current applications grid session. Set close to false to keep the tabs open as regular tabs instead of closing them (default: close them). |
 
 ### Automation and QA (9) — off by default
 

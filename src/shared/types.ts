@@ -201,3 +201,12 @@ export type ConnectSnippets = {
   vscodeJson: string;
   vscodeLanJson: string | null;
 };
+
+/** One offscreen-rendered frame from an "applications" grid tab. */
+export type GridFrame = {
+  tabId: string;
+  /** PNG data URL of the tile's latest paint. */
+  dataUrl: string;
+  width: number;
+  height: number;
+};

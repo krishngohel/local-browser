@@ -1,4 +1,4 @@
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 declare global {
@@ -56,6 +56,7 @@ declare global {
       onCloseSettings: (cb: () => void) => void;
       onToggleBookmark: (cb: () => void) => void;
       onOpenPalette: (cb: () => void) => void;
+      onGridFrame: (cb: (frame: GridFrame) => void) => () => void;
     };
   }
 }
