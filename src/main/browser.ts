@@ -197,6 +197,8 @@ export class BrowserHub {
   private tabs = new Map<string, Tab>();
   private order: string[] = [];
   private activeId: string | null = null;
+  /** One promise chain per tab id, so same-tab calls stay ordered and different-tab calls run concurrently. */
+  private tabQueues = new Map<string, Promise<unknown>>();
   private pw: PwBrowser | null = null;
   private onChange: () => void = () => {};
   private seq = 0;
@@ -214,6 +216,10 @@ export class BrowserHub {
   /** In-flight icon downloads, so several tabs on one site fetch it once. */
   private faviconPending = new Map<string, Promise<string>>();
   private thumbs = new Map<string, { at: number; data: string }>();
+  /** Electron's own CDP target id for each tab's webContents, once discovered (see `electronTargetId`). */
+  private tabTargetIds = new Map<string, string>();
+  /** Playwright Page -> its CDP target id, so repeat lookups don't pay another round trip. */
+  private pageTargetIds = new WeakMap<PwPage, string>();
   /**
    * Sessions `prepareSession` has already wired up. All incognito tabs share one session, so
    * without this every new private tab added another `will-download` listener to it: one
@@ -1025,8 +1031,7 @@ export class BrowserHub {
    * `frame_select` picked an iframe. Every ref-based read and every non-Playwright fallback
    * goes through here so a selected frame is honoured consistently.
    */
-  private async exec(js: string): Promise<unknown> {
-    const tab = this.requireActive();
+  private async exec(tab: Tab, js: string): Promise<unknown> {
     const wc = tab.view.webContents;
     if (tab.frameIndex === null) return wc.executeJavaScript(js);
     const frame = wc.mainFrame.framesInSubtree[tab.frameIndex];
@@ -1565,19 +1570,22 @@ export class BrowserHub {
     }
   }
 
-  async selectorsForRef(ref: string): Promise<string[]> {
-    return (await this.exec(`(() => {
+  async selectorsForRef(tab: Tab, ref: string): Promise<string[]> {
+    return (await this.exec(
+      tab,
+      `(() => {
       ${ECHO_SELECTORS_SOURCE}
       const el = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
       return el ? echoSelectors(el) : [];
-    })()`)) as string[];
+    })()`,
+    )) as string[];
   }
 
-  private async resolveSelectors(ref: string): Promise<{ selectors: string[]; text?: string }> {
-    const cached = this.active()?.snapshotByRef.get(ref);
+  private async resolveSelectors(tab: Tab, ref: string): Promise<{ selectors: string[]; text?: string }> {
+    const cached = tab.snapshotByRef.get(ref);
     let live: string[] = [];
     try {
-      live = await this.selectorsForRef(ref);
+      live = await this.selectorsForRef(tab, ref);
     } catch {
       live = [];
     }
@@ -2033,34 +2041,118 @@ export class BrowserHub {
     return tab;
   }
 
-  private async playwrightPage(): Promise<PwPage | null> {
+  private resolveTab(tabId?: string): Tab {
+    return tabId ? this.requireTab(tabId) : this.requireActive();
+  }
+
+  /**
+   * Runs `fn` against the resolved tab, queued behind any call already running for that same
+   * tab id. Calls targeting different tabs never wait on each other. `fn` receives the tab
+   * directly and should call `xCore(tab, ...)` helpers rather than public `x(tabId)` wrappers,
+   * or it will enqueue onto its own slot and deadlock.
+   */
+  private withTab<T>(tabId: string | undefined, fn: (tab: Tab) => Promise<T>): Promise<T> {
+    const tab = this.resolveTab(tabId);
+    const prior = this.tabQueues.get(tab.id) ?? Promise.resolve();
+    const run = prior.then(() => fn(tab), () => fn(tab));
+    this.tabQueues.set(
+      tab.id,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return run;
+  }
+
+  /** Test-only seam for the queue-ordering test: `withTab` itself is private. Not registered as an MCP tool. */
+  withTabForTest<T>(tabId: string | undefined, fn: (tab: Tab) => Promise<T>): Promise<T> {
+    return this.withTab(tabId, fn);
+  }
+
+  /**
+   * This tab's own CDP target id, via Electron's in-process debugger (not the external
+   * Playwright connection). Cached per tab id since a target id is stable for the tab's
+   * lifetime. Returns null on any failure (e.g. a debugger already attached by devtools) so
+   * callers fall back to URL matching rather than breaking.
+   */
+  private async electronTargetId(tab: Tab): Promise<string | null> {
+    const cached = this.tabTargetIds.get(tab.id);
+    if (cached) return cached;
+    const wc = tab.view.webContents;
+    if (wc.isDestroyed()) return null;
+    try {
+      if (!wc.debugger.isAttached()) wc.debugger.attach("1.3");
+      const info = (await wc.debugger.sendCommand("Target.getTargetInfo")) as {
+        targetInfo?: { targetId?: string };
+      };
+      const id = info.targetInfo?.targetId;
+      if (id) this.tabTargetIds.set(tab.id, id);
+      return id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** A Playwright page's own CDP target id, via its own CDP session (safe to hold alongside Electron's debugger — CDP targets support multiple attached sessions). */
+  private async pwPageTargetId(page: PwPage): Promise<string | null> {
+    const cached = this.pageTargetIds.get(page);
+    if (cached) return cached;
+    try {
+      const session = await page.context().newCDPSession(page);
+      const info = (await session.send("Target.getTargetInfo")) as {
+        targetInfo?: { targetId?: string };
+      };
+      const id = info.targetInfo?.targetId ?? null;
+      if (id) this.pageTargetIds.set(page, id);
+      try {
+        await session.detach();
+      } catch {
+        /* already gone */
+      }
+      return id;
+    } catch {
+      return null;
+    }
+  }
+
+  private async playwrightPage(tab: Tab): Promise<PwPage | null> {
     await this.connectPlaywright();
     if (!this.pw) return null;
-    const tab = this.active();
-    if (!tab) return null;
-    const url = this.activeUrl();
-    // Playwright has no target for a file: page.
+    const url = tab.view.webContents.getURL();
     if (!url || url.startsWith("file:")) return null;
     const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
-    const page = pages.find((p) => safePageUrl(p) === url) || null;
+    let page: PwPage | null = null;
+    if (pages.length > 1) {
+      const targetId = await this.electronTargetId(tab);
+      if (targetId) {
+        for (const candidate of pages) {
+          if ((await this.pwPageTargetId(candidate)) === targetId) {
+            page = candidate;
+            break;
+          }
+        }
+      }
+    }
+    if (!page) page = pages.find((p) => safePageUrl(p) === url) || null;
     if (page) this.hookDialogs(tab.id, page);
     return page;
   }
 
   /**
-   * The Playwright page for the active tab, waiting up to `PW_PAGE_WAIT_MS` for one to show
+   * The Playwright page for the given tab, waiting up to `PW_PAGE_WAIT_MS` for one to show
    * up. Only for tools that cannot do the job without Playwright, so that a short lag after a
    * navigation is not reported to the assistant as "Playwright not attached".
    *
    * The URL is re-read each round, so a navigation landing mid-wait converges rather than
    * leaving the loop chasing the address the tab has already left.
    */
-  private async requirePlaywrightPage(): Promise<PwPage | null> {
+  private async requirePlaywrightPage(tab: Tab): Promise<PwPage | null> {
     const deadline = Date.now() + PW_PAGE_WAIT_MS;
     for (;;) {
-      const url = this.activeUrl();
+      const url = tab.view.webContents.getURL();
       if (!url || url.startsWith("file:")) return null;
-      const page = await this.playwrightPage();
+      const page = await this.playwrightPage(tab);
       if (page) return page;
       if (Date.now() >= deadline) return null;
       await sleep(100);
@@ -2284,11 +2376,10 @@ export class BrowserHub {
    * Playwright is not attached, or when a frame is selected that Playwright cannot match —
    * the caller then falls back to `exec`, which addresses frames through Electron instead.
    */
-  private async pwTarget(opts?: { wait?: boolean }): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
-    const page = opts?.wait ? await this.requirePlaywrightPage() : await this.playwrightPage();
+  private async pwTarget(tab: Tab, opts?: { wait?: boolean }): Promise<{ page: PwPage; root: PwLocatorRoot } | null> {
+    const page = opts?.wait ? await this.requirePlaywrightPage(tab) : await this.playwrightPage(tab);
     if (!page) return null;
-    const tab = this.active();
-    if (!tab || tab.frameIndex === null) return { page, root: page };
+    if (tab.frameIndex === null) return { page, root: page };
     const frames: PwFrame[] = page.frames();
     const byUrl = tab.frameUrl ? frames.find((f) => f.url() === tab.frameUrl) : undefined;
     const root = byUrl ?? frames[tab.frameIndex];
@@ -2297,10 +2388,11 @@ export class BrowserHub {
   }
 
   private async withPage(
+    tab: Tab,
     pwFn: (page: PwPage, root: PwLocatorRoot) => Promise<void>,
     fallback: () => Promise<void>,
   ): Promise<void> {
-    const target = await this.pwTarget();
+    const target = await this.pwTarget(tab);
     if (target) {
       await pwFn(target.page, target.root);
       return;
