@@ -226,6 +226,16 @@ export class BrowserHub {
   private onChange: () => void = () => {};
   private seq = 0;
   private settingsOpen = false;
+  /**
+   * True while any OSR ("applications" grid) tab is open. A `BrowserView` always paints on
+   * top of the renderer's own document, so the grid overlay it draws is invisible while a
+   * regular tab is attached — this keeps that tab detached for as long as the condition
+   * holds, the same technique `setSettingsOpen` uses. Set automatically from the tab list
+   * (see `syncGridVisibility`) rather than toggled directly, since the grid must keep
+   * showing a tab kept open via `apps_session_end({ close: false })` even after it stops
+   * belonging to any tracked session.
+   */
+  private gridOpen = false;
   private rec: Recorder | null = null;
   /** Tabs currently mid-`watch()`, so two overlapping `watch` calls on the same tab collide instead of racing. */
   private watchingTabs = new Set<string>();
@@ -331,7 +341,10 @@ export class BrowserHub {
 
   setWindow(window: BrowserWindow, onChange: () => void): void {
     this.window = window;
-    this.onChange = onChange;
+    this.onChange = () => {
+      this.syncGridVisibility();
+      onChange();
+    };
     this.layout();
     const relayout = () => {
       this.clearDeviceEmulation();
@@ -378,6 +391,37 @@ export class BrowserHub {
 
   isSettingsOpen(): boolean {
     return this.settingsOpen;
+  }
+
+  /**
+   * Detaches the active tab's `BrowserView` the moment any OSR tab exists, and reattaches it
+   * once none do. Runs at the top of every `onChange()` (see `setWindow`), so it stays in
+   * sync with `createAppsSession`, `apps_session_end`, and OSR tabs closed one at a time,
+   * without those call sites needing to know about grid visibility themselves.
+   */
+  private syncGridVisibility(): void {
+    let hasOsr = false;
+    for (const t of this.tabs.values()) {
+      if (t.osr) {
+        hasOsr = true;
+        break;
+      }
+    }
+    if (hasOsr === this.gridOpen) return;
+    this.gridOpen = hasOsr;
+    if (!this.window || this.settingsOpen) return;
+    const tab = this.activeId ? this.tabs.get(this.activeId) : undefined;
+    if (!tab || tab.osr) return;
+    if (hasOsr) {
+      try {
+        this.window.removeBrowserView(tab.view as BrowserView);
+      } catch {
+        /* already detached */
+      }
+    } else {
+      this.window.addBrowserView(tab.view as BrowserView);
+      this.layout();
+    }
   }
 
   isLoading(): boolean {
@@ -788,7 +832,7 @@ export class BrowserHub {
   }
 
   selectTab(id: string, opts?: { record?: boolean }): void {
-    if (this.settingsOpen) return;
+    if (this.settingsOpen || this.gridOpen) return;
     const tab = this.requireTab(id);
     if (tab.osr) throw new Error("OSR tabs render in the grid, not the main view.");
     const switched = this.activeId !== id;
@@ -2350,7 +2394,7 @@ export class BrowserHub {
   }
 
   layout(): void {
-    if (!this.window || !this.activeId || this.settingsOpen) return;
+    if (!this.window || !this.activeId || this.settingsOpen || this.gridOpen) return;
     const tab = this.tabs.get(this.activeId);
     // `selectTab` refuses OSR tabs, so the active tab is always an attached BrowserView; the
     // guard is here so the cast below stays honest if that ever changes.

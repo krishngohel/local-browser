@@ -2,6 +2,7 @@ import type { AppSettings, AppState } from "../shared/types";
 import { el, svgIcon } from "./ui/dom";
 import { applyTheme, reportChromeHeight } from "./ui/theme";
 import { renderTabs, hidePreview, invalidateTabs } from "./ui/tabs";
+import { initGrid, syncGrid } from "./ui/grid";
 import { initOmnibox, renderOmnibox, focusOmnibox, closeSuggestions } from "./ui/omnibox";
 import { initAssistant, renderAssistant, closePopover } from "./ui/assistant";
 import { remeasureToasts, toast } from "./ui/toasts";
@@ -55,6 +56,7 @@ function render(next: AppState): void {
   reloadBtn.setAttribute("aria-label", reloadBtn.title);
 
   renderTabs(next, tabsEl);
+  syncGrid(next.tabs.filter((t) => t.osr).map((t) => t.id));
   renderOmnibox(next);
   renderAssistant(next);
   renderBookmark(next);
@@ -293,6 +295,7 @@ async function openSettingsSection(section: string): Promise<void> {
 
 if (window.lb) {
   initSettings(render, closeOverlays);
+  initGrid();
   window.lb.onState(render);
   window.lb.onOpenSettings((section) => void openSettingsSection(section || "connections"));
   window.lb.onCloseSettings(() => hideSettings());

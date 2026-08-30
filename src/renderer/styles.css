@@ -84,7 +84,8 @@ html {
   height: calc(var(--chrome-h) + var(--overlay-h));
 }
 
-html.settings-open {
+html.settings-open,
+html.grid-open {
   height: 100%;
 }
 
@@ -1032,6 +1033,47 @@ body.settings-open .toasts {
     opacity: 0;
     transform: translateY(-4px);
   }
+}
+
+/* ------------------------------------------------------------- apps grid */
+
+/*
+ * A BrowserView always paints above this document, so this only becomes visible once main
+ * detaches the active tab's view (see `syncGridVisibility` in src/main/browser.ts) — driven
+ * automatically by whether any OSR tab is open, not by settings-style toggling here.
+ */
+.apps-grid {
+  position: fixed;
+  top: var(--chrome-h);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 40;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-content: start;
+  gap: 8px;
+  padding: 8px;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.grid-tile {
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: var(--r-sm, 6px);
+  overflow: hidden;
+  background: var(--surface);
+  cursor: default;
+}
+
+.grid-tile.focused {
+  border-color: var(--accent);
+}
+
+.grid-tile canvas {
+  width: 100%;
+  display: block;
 }
 
 /* ------------------------------------------------------------ settings */
