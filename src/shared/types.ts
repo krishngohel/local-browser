@@ -92,6 +92,8 @@ export type AppSettings = {
   evaluateEnabled: boolean;
   /** Small randomized pauses before assistant clicks/keystrokes, so Echo paces like a person. */
   humanPacing: boolean;
+  /** Shows a small cursor moving to what the assistant clicks or types into. */
+  showAssistantCursor: boolean;
 };
 
 /**

@@ -767,6 +767,35 @@ try {
     assert.match((await ok("viewport_set", { width: 800, height: 600 })).text, /800x600/);
   });
 
+  // `evaluate` is enabled by default in this harness (see TOTAL_TOOLS above), so no gating
+  // is needed here — other checks in this file (e.g. "zoom + keyboard_shortcut + evaluate")
+  // call it unconditionally too. Clicks the "hover me" button rather than a nav link so the
+  // clicked element is still on the page afterward to check the cursor's position against.
+  await check("click leaves a cursor overlay element positioned near the clicked element", async () => {
+    await ok("navigate", { url: `${FX}/index.html` });
+    const ref = await findRef({ text: "hover me" });
+    await ok("click", { ref });
+    const box = await json("evaluate", {
+      js: `(() => {
+        const c = document.getElementById('__echo_cursor__');
+        const t = document.querySelector(${JSON.stringify(`[data-lb-ref="${ref}"]`)});
+        if (!c || !t) return null;
+        const cx = parseFloat(c.style.left);
+        const cy = parseFloat(c.style.top);
+        const r = t.getBoundingClientRect();
+        return {
+          opacity: c.style.opacity,
+          nearX: Math.abs(cx - (r.left + r.width / 2)) < 5,
+          nearY: Math.abs(cy - (r.top + r.height / 2)) < 5,
+        };
+      })()`,
+    });
+    assert.ok(box, "cursor overlay element not found after click");
+    assert.equal(box.opacity, "1");
+    assert.equal(box.nearX, true, `cursor x not near target: ${JSON.stringify(box)}`);
+    assert.equal(box.nearY, true, `cursor y not near target: ${JSON.stringify(box)}`);
+  });
+
   await check("every tool exercised", () => {
     const missed = names.filter((n) => !called.has(n) && !SKIPPED.has(n));
     assert.deepEqual(missed, [], `never called: ${missed.join(", ")}`);

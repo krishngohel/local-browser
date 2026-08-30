@@ -203,6 +203,12 @@ export function initSettings(
     void window.lb.updateSettings({ humanPacing: humanPacing.checked });
   });
 
+  const showAssistantCursor = document.getElementById("show-assistant-cursor") as HTMLInputElement | null;
+  showAssistantCursor?.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateSettings({ showAssistantCursor: showAssistantCursor.checked });
+  });
+
   const homeUrl = document.getElementById("home-url") as HTMLInputElement;
   document.getElementById("home-url-save")!.addEventListener("click", () => saveHomeUrl(homeUrl));
   homeUrl.addEventListener("keydown", (event) => {
@@ -305,6 +311,9 @@ export function renderSettings(next: AppState): void {
 
   const humanPacing = document.getElementById("human-pacing") as HTMLInputElement | null;
   if (humanPacing) humanPacing.checked = next.settings.humanPacing;
+
+  const showAssistantCursor = document.getElementById("show-assistant-cursor") as HTMLInputElement | null;
+  if (showAssistantCursor) showAssistantCursor.checked = next.settings.showAssistantCursor;
 
   renderRecorder(next);
   renderTools(next);

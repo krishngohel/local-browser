@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   homeUrl: "https://www.google.com/",
   evaluateEnabled: false,
   humanPacing: true,
+  showAssistantCursor: true,
 };
 
 function file(dir?: string): string {
@@ -42,5 +43,7 @@ function sanitize(s: Partial<AppSettings>, fallback: AppSettings): AppSettings {
     homeUrl: typeof s.homeUrl === "string" && /^https?:\/\//.test(s.homeUrl) ? s.homeUrl : fallback.homeUrl,
     evaluateEnabled: typeof s.evaluateEnabled === "boolean" ? s.evaluateEnabled : fallback.evaluateEnabled,
     humanPacing: typeof s.humanPacing === "boolean" ? s.humanPacing : fallback.humanPacing,
+    showAssistantCursor:
+      typeof s.showAssistantCursor === "boolean" ? s.showAssistantCursor : fallback.showAssistantCursor,
   };
 }

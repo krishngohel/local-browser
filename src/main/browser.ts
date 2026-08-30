@@ -32,6 +32,7 @@ import {
   tablesScript,
   visibleScript,
 } from "./page-scripts";
+import { elementCenterScript, moveCursorScript } from "../shared/cursor-script";
 import { extractPdfText, pdfPageCount } from "./pdf-text";
 import type { Recorder } from "./recordings";
 import { DialogPolicies, type DialogPolicy, type DialogSeen } from "./dialogs";
@@ -247,6 +248,8 @@ export class BrowserHub {
   private rateLimiter = new RateLimiter();
   /** Small randomized pauses before assistant clicks/keystrokes. Mirrors the user setting. */
   private humanPacing = true;
+  /** Shows a small in-page cursor moving to the target before click/type/select/hover. Mirrors the user setting. */
+  private showAssistantCursor = true;
   /** Hosts already announced as challenged this session, so the notification fires once each. */
   private captchaNotified = new Set<string>();
 
@@ -257,6 +260,11 @@ export class BrowserHub {
   /** Reflects the "human pacing" setting; read live before each interaction. */
   setHumanPacing(on: boolean): void {
     this.humanPacing = on;
+  }
+
+  /** Reflects the "show assistant cursor" setting; read live before each interaction. */
+  setShowAssistantCursor(on: boolean): void {
+    this.showAssistantCursor = on;
   }
 
   setDialogs(d: DialogPolicies): void {
@@ -1146,6 +1154,7 @@ export class BrowserHub {
 
   private async clickCore(tab: Tab, ref: string): Promise<void> {
     await pace(this.humanPacing);
+    await this.moveCursorTo(tab, ref);
     const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
@@ -1179,6 +1188,7 @@ export class BrowserHub {
 
   private async typeTextCore(tab: Tab, ref: string, text: string, submit = false): Promise<void> {
     await pace(this.humanPacing);
+    await this.moveCursorTo(tab, ref);
     const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
@@ -1270,6 +1280,7 @@ export class BrowserHub {
 
   private async selectCore(tab: Tab, ref: string, value: string): Promise<void> {
     await pace(this.humanPacing);
+    await this.moveCursorTo(tab, ref);
     const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
@@ -1339,6 +1350,7 @@ export class BrowserHub {
 
   private async hoverCore(tab: Tab, ref: string): Promise<void> {
     await pace(this.humanPacing);
+    await this.moveCursorTo(tab, ref);
     const resolved = await this.resolveSelectors(tab, ref);
     this.rec?.beginIgnore();
     try {
@@ -1757,6 +1769,22 @@ export class BrowserHub {
       selectors: unique([...(cached?.selectors ?? []), ...live, ...hrefSel]),
       text: cached?.name || undefined,
     };
+  }
+
+  /**
+   * Shows a small cosmetic cursor moving to a snapshot ref before an assistant click, type,
+   * select, or hover. Purely visual — any failure here (ref gone, page navigated away, no DOM
+   * to inject into) is swallowed so it never blocks the real action that follows.
+   */
+  private async moveCursorTo(tab: Tab, ref: string): Promise<void> {
+    if (!this.showAssistantCursor) return;
+    try {
+      const center = (await this.exec(tab, elementCenterScript(ref))) as { x: number; y: number } | null;
+      if (!center) return;
+      await this.exec(tab, moveCursorScript(center.x, center.y));
+    } catch {
+      /* cosmetic only — never block the real action on this failing */
+    }
   }
 
   /**

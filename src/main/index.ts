@@ -430,6 +430,7 @@ function registerIpc(): void {
     const s = setSettings(next);
     hub.setHomeUrl(s.homeUrl);
     hub.setHumanPacing(s.humanPacing);
+    hub.setShowAssistantCursor(s.showAssistantCursor);
     // The evaluate switch lives in settings, and it gates the `evaluate` tool live.
     refreshToolAvailability();
     broadcast();
@@ -687,6 +688,7 @@ if (!gotLock) {
     hub.setDownloads(downloads);
     hub.setHomeUrl(getSettings().homeUrl);
     hub.setHumanPacing(getSettings().humanPacing);
+    hub.setShowAssistantCursor(getSettings().showAssistantCursor);
     // Present as the plain Chromium Echo genuinely is, so the Electron/app-name tokens in the
     // default UA don't get pages blocked or downgraded. Must be set before any tab loads.
     app.userAgentFallback = cleanChromeUserAgent(process.platform, process.versions.chrome);
