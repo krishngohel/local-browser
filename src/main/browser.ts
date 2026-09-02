@@ -2683,17 +2683,28 @@ export class BrowserHub {
     }
   }
 
+  /**
+   * Disambiguation by CDP target id only runs among pages that actually share this tab's URL —
+   * that's the only case where more than one candidate can match. Running it across every open
+   * page regardless of URL (the original version of this method) cost one CDP round trip per
+   * open page on every call, which scales with tab count: with several tabs open (exactly what
+   * the applications grid encourages) that scan alone measured 600ms+ against a same-machine
+   * fixture server, enough to blow through `requirePlaywrightPage`'s 2s budget under real-world
+   * CDP latency and fail Playwright-only tools like `upload_file` with a misleading "not
+   * attached" error even though Playwright was attached the whole time.
+   */
   private async playwrightPage(tab: Tab): Promise<PwPage | null> {
     await this.connectPlaywright();
     if (!this.pw) return null;
     const url = tab.view.webContents.getURL();
     if (!url || url.startsWith("file:")) return null;
     const pages = this.pw.contexts().flatMap((ctx) => ctx.pages());
-    let page: PwPage | null = null;
-    if (pages.length > 1) {
+    const sameUrl = pages.filter((p) => safePageUrl(p) === url);
+    let page: PwPage | null = sameUrl[0] ?? null;
+    if (sameUrl.length > 1) {
       const targetId = await this.electronTargetId(tab);
       if (targetId) {
-        for (const candidate of pages) {
+        for (const candidate of sameUrl) {
           if ((await this.pwPageTargetId(candidate)) === targetId) {
             page = candidate;
             break;
@@ -2701,7 +2712,6 @@ export class BrowserHub {
         }
       }
     }
-    if (!page) page = pages.find((p) => safePageUrl(p) === url) || null;
     if (page) this.hookDialogs(tab.id, page);
     return page;
   }

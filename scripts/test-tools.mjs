@@ -453,6 +453,48 @@ try {
     assert.equal(JSON.parse((await ok("evaluate", { js: "window.__picked" })).text), "picked.txt");
   });
 
+  await check("upload_file still disambiguates a same-URL tab collision after scoping the CDP scan", async () => {
+    // playwrightPage() used to scan every open page's CDP target id whenever more than one tab
+    // was open, regardless of whether any of them actually shared a URL. That cost scaled with
+    // total tab count -- measured ~600ms+ for a page near the end of a 9-page list against a
+    // same-machine fixture server, ~90ms after scoping the scan to same-URL candidates only --
+    // and under real-world CDP latency could burn through requirePlaywrightPage's 2s budget;
+    // upload_file has no non-Playwright fallback, so it failed outright with a misleading "not
+    // attached" error even though Playwright was attached the whole time. A reliable timing
+    // assertion for that regression needs enough open tabs to matter, but this harness's own
+    // real Chromium tabs hit unrelated rendering contention at that scale (verified: an
+    // unfixed-vs-fixed timing threshold was flaky in both directions here) -- so this check
+    // covers correctness only. The fix's actual perf win is in playwrightPage's own doc comment
+    // and was verified by hand against a real multi-tab session, not asserted here.
+    const idFirst = /tab-\d+/.exec((await ok("tabs_new", { url: `${FX}/forms.html` })).text)?.[0];
+    assert.ok(idFirst, "no tab id for the first same-URL tab");
+    const idCollision = /tab-\d+/.exec((await ok("tabs_new", { url: `${FX}/forms.html` })).text)?.[0];
+    assert.ok(idCollision, "no tab id for the colliding tab");
+
+    await ok("wait_for", { text: "Form fixture", tabId: idCollision });
+    const nameRef = await findRef({ label: "Name", tabId: idCollision });
+    await ok("type", { ref: nameRef, text: "Collision Tab", tabId: idCollision });
+    const fileRef = await findRef({ label: "File", tabId: idCollision });
+
+    const upload = path.join(userData, "collision-upload.txt");
+    fs.writeFileSync(upload, "x");
+    const set = await ok("upload_file", { ref: fileRef, paths: [upload], tabId: idCollision });
+    assert.match(set.text, /Set 1 file/);
+
+    const collisionFields = (await json("forms", { tabId: idCollision }))[0].fields;
+    assert.equal(collisionFields.find((f) => f.name === "name")?.value, "Collision Tab");
+    assert.match(collisionFields.find((f) => f.name === "file")?.value ?? "", /collision-upload\.txt/);
+
+    // The earlier tab on the identical URL must be untouched -- proof the collision resolved to
+    // the right target, not just the first same-URL match found.
+    const firstFields = (await json("forms", { tabId: idFirst }))[0].fields;
+    assert.equal(firstFields.find((f) => f.name === "name")?.value, "", "the earlier same-URL tab must be untouched");
+    assert.equal(firstFields.find((f) => f.name === "file")?.value, "", "the earlier same-URL tab's file field must be untouched");
+
+    await ok("tabs_close", { id: idFirst });
+    await ok("tabs_close", { id: idCollision });
+  });
+
   await check("storage + cookies + clear_site_data", async () => {
     await ok("navigate", { url: `${FX}/storage.html` });
     await ok("click", { ref: await findRef({ text: "save to storage" }) });
