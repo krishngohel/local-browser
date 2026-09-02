@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dialog fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    button { display: block; margin: 8px 0; padding: 8px 14px; font-size: 16px; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Dialog fixture</h1>
+  <button type="button" id="alert-btn">show alert</button>
+  <button type="button" id="confirm-btn">ask confirm</button>
+  <button type="button" id="prompt-btn">ask prompt</button>
+  <div id="out">idle</div>
+  <script>
+    var out = document.getElementById('out');
+    document.getElementById('alert-btn').addEventListener('click', function () {
+      window.alert('an alert');
+      out.textContent = 'alert done';
+    });
+    document.getElementById('confirm-btn').addEventListener('click', function () {
+      out.textContent = 'confirm: ' + window.confirm('really?');
+    });
+    document.getElementById('prompt-btn').addEventListener('click', function () {
+      try {
+        out.textContent = 'prompt: ' + window.prompt('who goes there?', '');
+      } catch (e) {
+        out.textContent = 'prompt unsupported: ' + e.message;
+      }
+    });
+  </script>
+</body>
+</html>

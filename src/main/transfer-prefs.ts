@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { TransferPrefs } from "../shared/types";
-import { userDataDir } from "./paths";
 
 export const DEFAULT_TRANSFER_PREFS: TransferPrefs = {
   snapshotPhoto: true,
@@ -15,31 +14,40 @@ export const DEFAULT_TRANSFER_PREFS: TransferPrefs = {
   toolsDebug: true,
   toolsTest: true,
   toolsRecord: true,
+  toolsRead: true,
+  toolsInteract: false,
+  toolsState: false,
+  toolsQa: false,
 };
 
 export const TOOL_GROUP_COUNTS = {
   always: 1,
-  toolsBrowse: 16,
+  toolsBrowse: 15,
   toolsSee: 2,
   toolsSearch: 2,
   toolsDebug: 2,
   toolsTest: 5,
   toolsRecord: 5,
+  toolsRead: 9,
+  toolsInteract: 11,
+  toolsState: 14,
+  toolsQa: 9,
 } as const;
 
-export function enabledToolCount(prefs: TransferPrefs = getTransferPrefs()): number {
+export function enabledToolCount(prefs: TransferPrefs = getTransferPrefs(), evaluateEnabled = false): number {
   let n = TOOL_GROUP_COUNTS.always;
-  if (prefs.toolsBrowse) n += TOOL_GROUP_COUNTS.toolsBrowse;
-  if (prefs.toolsSee) n += TOOL_GROUP_COUNTS.toolsSee;
-  if (prefs.toolsSearch) n += TOOL_GROUP_COUNTS.toolsSearch;
-  if (prefs.toolsDebug) n += TOOL_GROUP_COUNTS.toolsDebug;
-  if (prefs.toolsTest) n += TOOL_GROUP_COUNTS.toolsTest;
-  if (prefs.toolsRecord) n += TOOL_GROUP_COUNTS.toolsRecord;
+  for (const key of Object.keys(TOOL_GROUP_COUNTS) as (keyof typeof TOOL_GROUP_COUNTS)[]) {
+    if (key !== "always" && prefs[key]) n += TOOL_GROUP_COUNTS[key];
+  }
+  if (prefs.toolsInteract && evaluateEnabled) n += 1;
   return n;
 }
 
+let overrideDir: string | null = null;
+export function setTransferPrefsDir(dir: string | null): void { overrideDir = dir; }
 function prefsPath(): string {
-  return path.join(userDataDir(), "transfer-prefs.json");
+  const dir = overrideDir ?? require("./paths").userDataDir();
+  return path.join(dir, "transfer-prefs.json");
 }
 
 export function getTransferPrefs(): TransferPrefs {

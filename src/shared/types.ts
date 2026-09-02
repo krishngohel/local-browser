@@ -3,6 +3,28 @@ export type TabInfo = {
   title: string;
   url: string;
   loading: boolean;
+  favicon: string | null;
+  incognito: boolean;
+  /**
+   * True for an offscreen-rendered "applications" tab: it has no view attached to the window
+   * and is watched in the grid instead, so it cannot be selected as the main view. Still
+   * addressable by tabId like any other tab, and stays listed after its session ends.
+   */
+  osr: boolean;
+};
+
+export type HistoryEntry = { url: string; title: string; visitedAt: string };
+
+export type BookmarkInfo = { id: string; url: string; title: string; createdAt: string };
+
+export type DownloadInfo = {
+  id: string;
+  filename: string;
+  path: string;
+  bytes: number;
+  totalBytes: number;
+  state: "progressing" | "completed" | "cancelled" | "interrupted";
+  startedAt: string;
 };
 
 export type TestRunInfo = {
@@ -21,6 +43,7 @@ export type RecordedAction =
   | { type: "forward" }
   | { type: "reload" }
   | { type: "click"; selectors: string[]; text?: string }
+  | { type: "hover"; selectors: string[] }
   | { type: "type"; selectors: string[]; text: string; submit?: boolean; name?: string }
   | { type: "press"; key: string }
   | { type: "scroll"; deltaY: number }
@@ -62,6 +85,59 @@ export type TransferPrefs = {
   toolsDebug: boolean;
   toolsTest: boolean;
   toolsRecord: boolean;
+  toolsRead: boolean;
+  toolsInteract: boolean;
+  toolsState: boolean;
+  toolsQa: boolean;
+};
+
+export type AppSettings = {
+  theme: "system" | "light" | "dark";
+  compactChrome: boolean;
+  homeUrl: string;
+  evaluateEnabled: boolean;
+  /** Small randomized pauses before assistant clicks/keystrokes, so Echo paces like a person. */
+  humanPacing: boolean;
+  /** Shows a small cursor moving to what the assistant clicks or types into. */
+  showAssistantCursor: boolean;
+};
+
+/**
+ * Stable applicant identity fields, reused by fill_form (and future auto-fill) across job
+ * applications. Resumes/cover letters are NOT stored here — those stay on upload_file.
+ */
+export type Profile = {
+  fullName: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  linkedin: string;
+  portfolio: string;
+  github: string;
+};
+
+export type ActivityEntry = {
+  id: number;
+  tool: string;
+  client: string;
+  startedAt: string;
+  ms: number;
+  ok: boolean;
+  summary: string;
+};
+
+export type ActivityState = {
+  paused: boolean;
+  count: number;
+  running: string | null;
+  recent: ActivityEntry[];
 };
 
 export type AppState = {
@@ -98,6 +174,13 @@ export type AppState = {
   transfer: TransferPrefs;
   platform: string;
   toolCount: number;
+  activity: ActivityState;
+  settings: AppSettings;
+  /** Kept in the broadcast state (like `settings`) so an assistant's profile_set while
+   *  Settings → Profile is open reaches the open panel the same way any other live edit does,
+   *  instead of the panel serving stale fields that a later Save would revert. */
+  profile: Profile;
+  bookmarks: { count: number; activeBookmarked: boolean };
 };
 
 export type ConnectResult = {
@@ -123,4 +206,13 @@ export type ConnectSnippets = {
   stdioLanJson: string | null;
   vscodeJson: string;
   vscodeLanJson: string | null;
+};
+
+/** One offscreen-rendered frame from an "applications" grid tab. */
+export type GridFrame = {
+  tabId: string;
+  /** PNG data URL of the tile's latest paint. */
+  dataUrl: string;
+  width: number;
+  height: number;
 };

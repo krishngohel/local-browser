@@ -1,6 +1,6 @@
 {
   "name": "local-browser",
-  "version": "1.0.5",
+  "version": "1.1.0",
   "description": "Echo — local Chrome-compatible browser with MCP for any AI client",
   "main": "out/main/index.js",
   "author": "Echo contributors",
@@ -16,6 +16,9 @@
     "dist:linux": "npm run build:prod && node scripts/ensure-icon.js && node scripts/check-packaging.js && electron-builder --linux AppImage --publish never",
     "icon": "node scripts/ensure-icon.js --force",
     "packaging:check": "node scripts/ensure-icon.js && node scripts/check-packaging.js",
+    "test:unit": "node scripts/run-unit-tests.js",
+    "test:tools": "npm run build && node scripts/test-tools.mjs",
+    "test": "npm run test:unit && npm run test:tools && npm run test:bridge",
     "test:bridge": "npm run build:prod && node scripts/test-echo-mcp-bridge.cjs",
     "start-menu": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/install-start-menu.ps1"
   },

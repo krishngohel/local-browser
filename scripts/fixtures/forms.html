@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Form fixture</title>
+  <meta name="description" content="A form for the Echo tool tests.">
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Form fixture</h1>
+  <form id="demo" name="demo" method="get" action="forms.html">
+    <label for="name">Name</label>
+    <input type="text" id="name" name="name" placeholder="Your name">
+
+    <label for="color">Color</label>
+    <select id="color" name="color">
+      <option value="red">Red</option>
+      <option value="green">Green</option>
+      <option value="blue">Blue</option>
+    </select>
+
+    <label for="agree">Agree</label>
+    <input type="checkbox" id="agree" name="agree">
+
+    <label for="file">File</label>
+    <input type="file" id="file" name="file">
+
+    <label for="firstName">First Name</label>
+    <input type="text" id="firstName" name="firstName" placeholder="Ada">
+
+    <label for="email">Email Address</label>
+    <input type="email" id="email" name="email" placeholder="you@example.com">
+
+    <p><button type="submit" id="send">Send form</button></p>
+  </form>
+  <p><button type="button" id="pick">Pick files</button></p>
+  <div id="out">idle</div>
+  <script>
+    var out = document.getElementById('out');
+    // Custom upload button: opens the native chooser from a detached input, the pattern the
+    // upload_file chooser interception exists for.
+    document.getElementById('pick').addEventListener('click', function () {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.addEventListener('change', function () {
+        window.__picked = input.files[0] ? input.files[0].name : '';
+      });
+      input.click();
+    });
+    document.getElementById('demo').addEventListener('submit', function (e) {
+      e.preventDefault();
+      out.textContent = 'submitted: ' + document.getElementById('name').value +
+        ' / ' + document.getElementById('color').value;
+    });
+  </script>
+</body>
+</html>

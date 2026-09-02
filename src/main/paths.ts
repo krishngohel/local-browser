@@ -41,6 +41,13 @@ export function downloadsDir(): string {
   return dir;
 }
 
+/** Where `upload_file` stages inline files the assistant writes before setting them on a page. */
+export function uploadsDir(): string {
+  const dir = path.join(userDataDir(), "uploads");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 export function runsDir(): string {
   const dir = path.join(userDataDir(), "runs");
   fs.mkdirSync(dir, { recursive: true });
@@ -49,6 +56,13 @@ export function runsDir(): string {
 
 export function recordingsDir(): string {
   const dir = path.join(userDataDir(), "recordings");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Where `visual_baseline` keeps its named screenshots, alongside the diffs made from them. */
+export function baselinesDir(): string {
+  const dir = path.join(userDataDir(), "baselines");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

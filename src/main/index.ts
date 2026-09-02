@@ -15,15 +15,55 @@ import { BrowserHub } from "./browser";
 import { connectSnippets, connectStatus, claudeConfigRevealTarget, registerChatGpt, registerClaudeDesktop, registerCursor } from "./connect-clients";
 import { startMcpHttp } from "./mcp-http";
 import { mcpLiveStatus, setMcpSessionListener } from "./mcp-sessions";
-import { registerTools } from "../mcp/register-tools";
+import { refreshToolAvailability, registerTools } from "../mcp/register-tools";
+import { TOOL_MANIFEST } from "../shared/tool-manifest";
 import { CDP_PORT, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpPort, mcpUrl, mcpUrlForHost, userDataDir, writeMcpPortFile } from "./paths";
 import { lanIPv4s } from "./net";
 import { getOrCreateToken } from "./token";
 import { TestRunner } from "./test-runs";
 import { Recorder } from "./recordings";
-import type { AppState, PlayResult, RecordedAction, TransferPrefs } from "../shared/types";
+import { Scheduler } from "./scheduler";
+import type { AppSettings, AppState, PlayResult, Profile, RecordedAction, TransferPrefs } from "../shared/types";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
+import { getSettings, setSettings } from "./settings";
+import { getProfile, setProfile } from "./profile";
+import { cleanChromeUserAgent } from "./user-agent";
+import { ActivityLog } from "./activity";
+import { History } from "./history";
+import { Bookmarks } from "./bookmarks";
+import { Downloads } from "./downloads";
+import { DialogPolicies } from "./dialogs";
+
+/**
+ * End-to-end test mode (`scripts/test-tools.mjs`).
+ *
+ * The profile is redirected before anything else runs, because `userDataDir()` is what every
+ * store — token, port file, prefs, settings, recordings, baselines — resolves its path from,
+ * and several of them are read during module initialisation.
+ */
+const TEST_MODE = process.env.ECHO_TEST === "1";
+/**
+ * Set when test mode was asked for without a throwaway profile. `app.exit()` should end the
+ * process on the spot, but module evaluation continuing past it would run `prepareTestProfile`
+ * against the real profile — so `whenReady` checks this flag and refuses rather than trusting
+ * the exit to have happened.
+ */
+let testModeRefused = false;
+if (TEST_MODE) {
+  // Test mode rewrites the prefs and settings files and switches every tool group on. Doing
+  // that to the real profile would hand a full 69-tool surface to whatever is connected, so
+  // a throwaway directory is not optional.
+  const testUserData = process.env.ECHO_TEST_USERDATA;
+  if (!testUserData) {
+    console.error("ECHO_TEST=1 needs ECHO_TEST_USERDATA: refusing to run test mode against the real profile.");
+    testModeRefused = true;
+    app.exit(3);
+  } else {
+    fs.mkdirSync(testUserData, { recursive: true });
+    app.setPath("userData", testUserData);
+  }
+}
 
 applyChromeCommandLine();
 app.setAppUserModelId("com.echo.browser");
@@ -33,6 +73,13 @@ app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 const hub = new BrowserHub();
 const tests = new TestRunner(hub);
 const recorder = new Recorder();
+const activity = new ActivityLog();
+// Built in whenReady, once app.getPath("userData") is final.
+let history: History;
+let bookmarks: Bookmarks;
+let downloads: Downloads;
+let dialogs: DialogPolicies;
+let scheduler: Scheduler;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let mcpListening = false;
@@ -66,7 +113,11 @@ function getState(): AppState {
     version: app.getVersion(),
     transfer: getTransferPrefs(),
     platform: process.platform,
-    toolCount: enabledToolCount(),
+    toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
+    activity: activity.state(),
+    settings: getSettings(),
+    profile: getProfile(),
+    bookmarks: { count: bookmarks.list().length, activeBookmarked: bookmarks.has(hub.activeUrl()) },
   };
 }
 
@@ -81,10 +132,45 @@ function handleShortcut(input: Electron.Input): boolean {
     broadcast();
     return true;
   }
+  if (mod && input.shift && key === "n") {
+    hub.setSettingsOpen(false);
+    mainWindow?.webContents.send("close-settings");
+    hub.createTab(undefined, { incognito: true });
+    broadcast();
+    return true;
+  }
   if (mod && key === "w") {
     const id = hub.activeTabId();
     if (id) hub.closeTab(id);
     broadcast();
+    return true;
+  }
+  if (mod && key === "tab") {
+    hub.cycleTab(input.shift ? -1 : 1);
+    broadcast();
+    return true;
+  }
+  if (mod && !input.shift && /^[1-9]$/.test(key)) {
+    // Chrome's convention: 1-8 are slots, 9 is always the last tab.
+    hub.selectTabIndex(key === "9" ? hub.tabCount() - 1 : Number(key) - 1);
+    broadcast();
+    return true;
+  }
+  if (mod && key === "d") {
+    mainWindow?.webContents.send("toggle-bookmark");
+    return true;
+  }
+  if (mod && key === ",") {
+    hub.setSettingsOpen(true);
+    mainWindow?.webContents.send("open-settings", "connections");
+    broadcast();
+    return true;
+  }
+  if (mod && (key === "k" || (input.shift && key === "p"))) {
+    // The page view holds focus when the shortcut comes from a site, so the palette input
+    // would open without a caret. Hand focus back to the chrome first.
+    mainWindow?.webContents.focus();
+    mainWindow?.webContents.send("open-palette");
     return true;
   }
   if (mod && key === "l") {
@@ -257,8 +343,30 @@ function registerIpc(): void {
     hub.createTab();
     broadcast();
   });
+  ipcMain.handle("tabs:new-incognito", () => {
+    hub.createTab(undefined, { incognito: true });
+    broadcast();
+  });
+  ipcMain.handle("tabs:reorder", (_e, id: string, index: number) => {
+    hub.reorderTab(id, index);
+    broadcast();
+  });
+  ipcMain.handle("tabs:thumbnail", (_e, id: string) => hub.tabThumbnail(id));
+  ipcMain.handle("chrome:overlay", (_e, px: number) => {
+    hub.setOverlayHeight(px);
+  });
+  ipcMain.handle("stop", () => {
+    hub.stop();
+    broadcast();
+  });
+  ipcMain.handle("chrome:height", (_e, px: number) => {
+    hub.setChromeHeight(px);
+  });
   ipcMain.handle("tabs:select", (_e, id: string) => {
-    hub.selectTab(id);
+    // `attachTab`, not `selectTab`: a click in the tab strip has nowhere to show an error, and
+    // rejecting the invoke would only surface as an unhandled rejection in the renderer. It
+    // stays a no-op while Settings or the grid covers the content area, as it always has.
+    hub.attachTab(id);
     broadcast();
   });
   ipcMain.handle("tabs:close", (_e, id: string) => {
@@ -306,13 +414,49 @@ function registerIpc(): void {
   });
   ipcMain.handle("transfer:set", (_e, next: Partial<TransferPrefs>) => {
     const prefs = setTransferPrefs(next);
+    // Reaches assistants that are already connected: their tool lists update in place.
+    refreshToolAvailability();
     broadcast();
     return prefs;
   });
+  ipcMain.handle("activity:pause", (_e, paused: boolean) => {
+    activity.setPaused(Boolean(paused));
+    return activity.isPaused();
+  });
+  ipcMain.handle("activity:clear", () => activity.clear());
   ipcMain.handle("settings:set", (_e, open: boolean) => {
     hub.setSettingsOpen(open);
     broadcast();
   });
+  ipcMain.handle("settings:get", () => getSettings());
+  ipcMain.handle("settings:update", (_e, next: Partial<AppSettings>) => {
+    const s = setSettings(next);
+    hub.setHomeUrl(s.homeUrl);
+    hub.setHumanPacing(s.humanPacing);
+    hub.setShowAssistantCursor(s.showAssistantCursor);
+    // The evaluate switch lives in settings, and it gates the `evaluate` tool live.
+    refreshToolAvailability();
+    broadcast();
+    return s;
+  });
+  ipcMain.handle("profile:get", () => getProfile());
+  ipcMain.handle("profile:update", (_e, next: Partial<Profile>) => setProfile(next));
+  ipcMain.handle("bookmarks:list", () => bookmarks.list());
+  ipcMain.handle("bookmarks:add", () => {
+    const url = hub.activeUrl();
+    if (!url) return null;
+    const title = hub.listTabs().find((t) => t.id === hub.activeTabId())?.title ?? url;
+    const added = bookmarks.add(url, title);
+    broadcast();
+    return added;
+  });
+  ipcMain.handle("bookmarks:remove", (_e, idOrUrl: string) => {
+    const removed = bookmarks.remove(idOrUrl);
+    broadcast();
+    return removed;
+  });
+  ipcMain.handle("history:search", (_e, q: string) => history.search(String(q ?? ""), 8));
+  ipcMain.handle("tools:manifest", () => TOOL_MANIFEST);
   ipcMain.handle("menu:app", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     const menu = Menu.buildFromTemplate([
@@ -402,6 +546,15 @@ function registerIpc(): void {
     recorder.rename(id, name);
     broadcast();
   });
+  // Synchronous by necessity: the page preload is inside window.alert/confirm/prompt and
+  // cannot return to the page until it knows the tab's policy.
+  ipcMain.on("echo:dialog", (event, payload: { type?: string; message?: string }) => {
+    event.returnValue = hub.answerDialog(
+      event.sender.id,
+      String(payload?.type ?? "dialog"),
+      String(payload?.message ?? ""),
+    );
+  });
   ipcMain.on("echo:page-event", (event, payload: RecordedAction) => {
     if (event.sender === mainWindow?.webContents) return;
     if (!recorder.isRecording() || recorder.isIgnoring()) return;
@@ -448,6 +601,33 @@ function warnAlreadyRunning(): void {
   });
 }
 
+/**
+ * Switches every tool group on and enables `evaluate`, so the end-to-end test sees the full
+ * 69-tool surface. Written before the MCP server starts, because a session registers its
+ * tools from the snapshot of the prefs taken at that moment.
+ */
+function prepareTestProfile(): void {
+  setTransferPrefs({
+    snapshotPhoto: true,
+    screenshotPhoto: true,
+    watchFrames: true,
+    readableText: true,
+    skillTreeOnConnect: true,
+    toolsBrowse: true,
+    toolsSee: true,
+    toolsSearch: true,
+    toolsDebug: true,
+    toolsTest: true,
+    toolsRecord: true,
+    toolsRead: true,
+    toolsInteract: true,
+    toolsState: true,
+    toolsQa: true,
+  });
+  const home = process.env.ECHO_TEST_HOME;
+  setSettings(home ? { evaluateEnabled: true, homeUrl: home } : { evaluateEnabled: true });
+}
+
 function installAppMenu(): void {
   if (process.platform !== "darwin") {
     Menu.setApplicationMenu(null);
@@ -485,27 +665,101 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(async () => {
-    if (await echoAlreadyRunning()) {
+    // Fail closed: the exit above should already have ended the process, and if it somehow
+    // did not, nothing here may touch the real profile.
+    if (testModeRefused) {
+      app.exit(3);
+      return;
+    }
+    // Test mode never puts a dialog on screen: an unattended run would hang on it. A busy
+    // port is reported as exit code 3 instead.
+    if (TEST_MODE) {
+      prepareTestProfile();
+    } else if (await echoAlreadyRunning()) {
       warnAlreadyRunning();
       quitRequested = true;
       app.quit();
       return;
     }
 
+    dialogs = new DialogPolicies();
+    hub.setDialogs(dialogs);
+    history = new History(userDataDir());
+    bookmarks = new Bookmarks(userDataDir());
+    downloads = new Downloads();
+    hub.setHistory(history);
+    hub.setDownloads(downloads);
+    hub.setHomeUrl(getSettings().homeUrl);
+    hub.setHumanPacing(getSettings().humanPacing);
+    hub.setShowAssistantCursor(getSettings().showAssistantCursor);
+    // OSR tabs stream their frames to the chrome, which draws them as grid tiles. Dropped
+    // silently when the window is down (mid-quit, or before it exists): a lost tile frame is
+    // replaced by the next one ~80ms later.
+    hub.setGridFrameListener((tabId, dataUrl, width, height) => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send("grid:frame", { tabId, dataUrl, width, height });
+    });
+    // Present as the plain Chromium Echo genuinely is, so the Electron/app-name tokens in the
+    // default UA don't get pages blocked or downgraded. Must be set before any tab loads.
+    app.userAgentFallback = cleanChromeUserAgent(process.platform, process.versions.chrome);
+
     token = getOrCreateToken();
     setMcpSessionListener(broadcast);
     recorder.setOnChange(broadcast);
+    activity.setOnChange(broadcast);
     hub.setRecorder(recorder);
+    // A scheduled replay must not fight a live recording or another replay, so a job that
+    // arrives at a busy moment is reported as skipped and simply waits for its next slot.
+    scheduler = new Scheduler(userDataDir(), async (id) => {
+      // Pause is the user's stop button for everything an assistant set in motion, and a
+      // schedule outlives the session that created it. It has to be checked here too: the
+      // per-tool pause check in `activity.wrap` never sees a replay the timer started.
+      if (activity.isPaused()) return { ok: false, message: "Skipped: Echo is paused by the user." };
+      if (recorder.isRecording()) return { ok: false, message: "Skipped: a recording is in progress." };
+      if (recorder.isPlaying()) return { ok: false, message: "Skipped: a recording is already playing." };
+      try {
+        return await recorder.play(id, hub);
+      } catch (error) {
+        return { ok: false, message: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    scheduler.start();
     registerIpc();
 
     try {
-      await startMcpHttp(token, (server) => registerTools(server, hub, tests, recorder), app.getVersion());
+      await startMcpHttp(
+        token,
+        (server, clientName) =>
+          registerTools(server, {
+            hub,
+            tests,
+            recorder,
+            activity,
+            clientName,
+            history,
+            bookmarks,
+            downloads,
+            settings: getSettings,
+            prefs: getTransferPrefs(),
+            dialogs,
+            scheduler,
+          }),
+        app.getVersion(),
+      );
       mcpListening = true;
       writeMcpPortFile(mcpPort());
       broadcast();
     } catch (error) {
       mcpListening = false;
       broadcast();
+      if (TEST_MODE) {
+        console.error(
+          `ECHO_TEST: MCP server did not start: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        quitRequested = true;
+        app.exit(3);
+        return;
+      }
       if (isAddrInUse(error) || (await echoAlreadyRunning())) {
         warnAlreadyRunning();
         quitRequested = true;
@@ -550,6 +804,9 @@ if (!gotLock) {
 
 app.on("before-quit", () => {
   quitRequested = true;
+  scheduler?.stop();
+  // History writes are debounced, so the last visit of the session may still be queued.
+  history?.flush();
 });
 
 app.on("window-all-closed", () => {

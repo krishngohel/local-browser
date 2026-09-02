@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Slow fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Slow fixture</h1>
+  <p>The line below appears a little over a second after load.</p>
+  <div id="out">waiting</div>
+  <script>
+    setTimeout(function () {
+      document.getElementById('out').textContent = 'loaded late';
+    }, 1200);
+  </script>
+</body>
+</html>

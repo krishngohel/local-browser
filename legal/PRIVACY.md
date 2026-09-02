@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Effective date:** August 19, 2026  
+**Effective date:** August 21, 2026  
 **Product:** Echo (the “App”)
 
 This policy describes how the App handles information. It is written to match how the software actually works. It is not legal advice.
@@ -23,6 +23,8 @@ We do not operate a cloud database of your visits.
 When you visit a website or search Google, **that site** (and its ads, analytics, and captcha providers) can see your request, IP address, and cookies, under **their** policies.
 
 If you click **Connect** for Cursor or Claude Desktop, or paste an MCP snippet into another assistant, those apps can drive this browser. While connected, they can see page content, screenshots, and anything you are signed in to here. Their privacy policies apply to how they handle that data.
+
+- If you turn on **Sessions and state**, an assistant can read the cookies and storage for sites you are signed in to, including sign-in tokens, and clear that data.
 
 ## What we do not collect
 

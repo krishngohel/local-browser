@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Storage fixture</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    button { padding: 8px 14px; font-size: 16px; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Storage fixture</h1>
+  <button type="button" id="save">save to storage</button>
+  <div id="out">idle</div>
+  <script>
+    document.getElementById('save').addEventListener('click', function () {
+      window.localStorage.setItem('fixture', 'saved');
+      document.getElementById('out').textContent = 'stored';
+    });
+  </script>
+</body>
+</html>

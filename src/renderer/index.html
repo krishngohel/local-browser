@@ -13,36 +13,68 @@
   <body>
     <div class="shell" id="shell">
       <div class="tabstrip">
-        <div class="tabs" id="tabs">
-          <button class="circle-btn" id="new-tab" title="New tab" aria-label="New tab">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+        <div class="tabs" id="tabs" role="tablist" aria-label="Open tabs"></div>
+        <button class="icon-btn new-tab" id="new-tab" title="New tab (Ctrl+T)" aria-label="New tab">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" /></svg>
+        </button>
+      </div>
+      <div class="toolbar">
+        <div class="omni-wrap">
+          <div class="nav-group">
+            <button class="icon-btn" id="back" title="Back (Alt+Left)" aria-label="Back">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
+            </button>
+            <button class="icon-btn" id="forward" title="Forward (Alt+Right)" aria-label="Forward">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
+            </button>
+            <button class="icon-btn" id="reload" title="Reload (Ctrl+R)" aria-label="Reload">
+              <svg id="reload-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
+              <svg id="stop-icon" viewBox="0 0 24 24" aria-hidden="true" hidden><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
+            </button>
+          </div>
+          <form id="url-form" class="omnibox" autocomplete="off">
+            <span class="omni-icon search" id="omni-security" title="Search or type a URL">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
+            </span>
+            <input
+              id="url"
+              type="text"
+              spellcheck="false"
+              placeholder="Search Google or type a URL"
+              role="combobox"
+              aria-label="Address and search"
+              aria-autocomplete="list"
+              aria-expanded="false"
+              aria-controls="omni-suggest"
+            />
+            <button class="icon-btn star" type="button" id="bookmark" title="Bookmark this page (Ctrl+D)" aria-label="Bookmark this page">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 9.24l-7.19-.62L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27 18.18 21l-1.63-7.03L22 9.24zM12 15.4l-3.76 2.27 1-4.28-3.32-2.88 4.38-.38L12 6.1l1.71 4.04 4.38.38-3.32 2.88 1 4.28L12 15.4z" /></svg>
+            </button>
+          </form>
+        </div>
+        <div class="actions">
+          <button class="icon-btn rec-btn" id="record" title="Start recording" aria-label="Start recording">
+            <i class="rec-dot"></i>
+          </button>
+          <!-- The pill replaced the old MCP LED. The id is kept so nothing that looked it up breaks. -->
+          <span class="led" id="led" hidden></span>
+          <button class="pill assistant off" type="button" id="assistant-pill" aria-haspopup="dialog" aria-expanded="false">
+            <i class="dot"></i><span class="pill-text">Assistant</span><i class="trace"></i>
+          </button>
+          <button class="icon-btn" id="menu" title="Customize and control" aria-label="Menu">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
           </button>
         </div>
       </div>
-      <div class="toolbar">
-        <button class="nav-btn" id="back" title="Back" aria-label="Back">
-          <svg viewBox="0 0 24 24"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" /></svg>
-        </button>
-        <button class="nav-btn" id="forward" title="Forward" aria-label="Forward">
-          <svg viewBox="0 0 24 24"><path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" /></svg>
-        </button>
-        <button class="nav-btn" id="reload" title="Reload" aria-label="Reload">
-          <svg id="reload-icon" viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" /></svg>
-          <svg id="stop-icon" viewBox="0 0 24 24" hidden><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" /></svg>
-        </button>
-        <form id="url-form" class="omnibox">
-          <svg class="omnibox-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
-          <input id="url" type="text" spellcheck="false" placeholder="Search Google or type a URL" />
-        </form>
-        <button class="nav-btn rec-btn" id="record" title="Record" aria-label="Record">
-          <i class="rec-dot"></i>
-        </button>
-        <span class="led" id="led" title="MCP"><i></i></span>
-        <button class="nav-btn" id="menu" title="Customize and control" aria-label="Menu">
-          <svg viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>
-        </button>
-      </div>
     </div>
+
+    <div id="apps-grid" class="apps-grid" hidden></div>
+
+    <div class="suggest" id="omni-suggest" role="listbox" aria-label="Suggestions" hidden></div>
+    <div class="pop" id="assistant-pop" role="dialog" aria-label="Assistant activity" hidden></div>
+    <div class="preview" id="tab-preview" aria-hidden="true" hidden></div>
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+    <div class="palette" id="palette" hidden></div>
 
     <section class="settings" id="settings" hidden>
       <header class="settings-top">
@@ -53,14 +85,31 @@
       </header>
       <div class="settings-body">
         <nav class="settings-nav">
-          <button class="nav-item active" data-section="connections">Connections</button>
-          <button class="nav-item" data-section="recordings">Recordings</button>
-          <button class="nav-item" data-section="testing">Testing</button>
-          <button class="nav-item" data-section="transfers">Transfers</button>
-          <button class="nav-item" data-section="system">System</button>
-          <button class="nav-item" data-section="about">About</button>
-          <button class="nav-item" data-section="privacy">Privacy</button>
-          <button class="nav-item" data-section="terms">Terms</button>
+          <div class="nav-search">
+            <input
+              id="settings-search"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="Search settings"
+              aria-label="Search settings"
+            />
+          </div>
+          <div class="nav-list" id="settings-nav-list">
+            <button class="nav-item active" data-section="connections" data-icon="link"><span class="nav-label">Connections</span></button>
+            <button class="nav-item" data-section="tools" data-icon="wrench"><span class="nav-label">Tools</span></button>
+            <button class="nav-item" data-section="transfers" data-icon="swap"><span class="nav-label">Transfers</span></button>
+            <button class="nav-item" data-section="activity" data-icon="activity"><span class="nav-label">Activity</span></button>
+            <button class="nav-item" data-section="recordings" data-icon="record"><span class="nav-label">Recordings</span></button>
+            <button class="nav-item" data-section="testing" data-icon="check"><span class="nav-label">Testing</span></button>
+            <button class="nav-item" data-section="appearance" data-icon="palette"><span class="nav-label">Appearance</span></button>
+            <button class="nav-item" data-section="system" data-icon="monitor"><span class="nav-label">System</span></button>
+            <button class="nav-item" data-section="profile" data-icon="user"><span class="nav-label">Profile</span></button>
+            <button class="nav-item" data-section="about" data-icon="info"><span class="nav-label">About</span></button>
+            <button class="nav-item" data-section="privacy" data-icon="lock"><span class="nav-label">Privacy</span></button>
+            <button class="nav-item" data-section="terms" data-icon="doc"><span class="nav-label">Terms</span></button>
+          </div>
+          <p class="nav-empty" id="settings-search-empty" hidden>No settings match</p>
         </nav>
         <div class="settings-content">
           <section id="section-connections" class="card-list">
@@ -156,40 +205,17 @@
             </div>
             <p class="note" id="connect-note"></p>
           </section>
-          <section id="section-recordings" class="card-list" hidden>
-            <h2>Recordings</h2>
+          <section id="section-tools" class="card-list" hidden>
+            <h2>Tools</h2>
             <p class="help">
-              Record clicks here and from a connected assistant. Play back later with no model.
+              Every tool a connected assistant can call. Turn whole groups on or off under Transfers, then reconnect the client.
             </p>
+            <p class="count-line" id="tools-summary">Counting tools…</p>
             <div class="panel">
-            <div class="card">
-              <div>
-                <h3>Recorder</h3>
-                <p class="meta" id="record-status">Not recording</p>
-              </div>
-              <button class="chrome-btn filled" id="record-toggle">Start recording</button>
-            </div>
-            </div>
-            <div class="panel" id="recording-list"></div>
-            <p class="note" id="record-note"></p>
-          </section>
-          <section id="section-testing" class="card-list" hidden>
-            <h2>Product testing</h2>
-            <p class="help">Save screenshots and a short report while you click through a site.</p>
-            <div class="panel">
-            <div class="card">
-              <div>
-                <h3>Current run</h3>
-                <p class="meta" id="test-id">No run in progress</p>
-                <p class="meta" id="test-counts"></p>
+              <div class="table-wrap">
+                <table class="grid" id="tools-table"></table>
               </div>
             </div>
-            </div>
-            <div class="actions">
-              <button class="chrome-btn filled" id="test-start">Start run</button>
-              <button class="chrome-btn" id="test-end">End run</button>
-            </div>
-            <p class="note" id="test-note"></p>
           </section>
           <section id="section-transfers" class="card-list" hidden>
             <h2>What the assistant receives</h2>
@@ -198,14 +224,14 @@
             </p>
             <h2>Tools</h2>
             <p class="help">
-              Cursor often caps about 40 MCP tools across every server. Echo is at <strong id="tool-count">33</strong> with all groups on. Reconnect after changing this.
+              Cursor often caps about 40 MCP tools across every server. Echo is at <strong id="tool-count">40</strong> with the current groups on. Reconnect after changing this.
             </p>
             <div class="panel">
             <div class="card">
               <div>
                 <h3>Browse and click</h3>
-                <p class="meta">16 tools: tabs, navigate, snapshot, click, type, and the rest of driving the page.</p>
-                <p class="tokens">On uses 16 slots. Off if another MCP server already fills the cap.</p>
+                <p class="meta">15 tools: tabs, navigate, snapshot, click, type, and the rest of driving the page.</p>
+                <p class="tokens">On uses 15 slots. Off if another MCP server already fills the cap.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsBrowse" /><span></span></label>
             </div>
@@ -248,6 +274,50 @@
                 <p class="tokens">On uses 5 slots.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsRecord" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Read and data</h3>
+                <p class="meta">8 tools: get_text, find, links, tables, forms, page_info, html, pdf_text.</p>
+                <p class="tokens">On uses 8 slots. Text only, no photos.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsRead" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Interaction depth</h3>
+                <p class="meta">10 tools plus evaluate: hover, drag, right-click, dialogs, frames, zoom, upload. Upload lets the assistant send any local file it names or a file it writes itself, through file inputs and upload buttons, and evaluate runs JavaScript in the page if you allow it below.</p>
+                <p class="tokens">On uses 10 slots, or 11 with evaluate allowed below.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsInteract" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Sessions and state</h3>
+                <p class="meta">9 tools: cookies, storage, history, downloads, bookmarks, clear site data. The assistant can read every cookie and storage value in this profile, including sign-in tokens, and clear site data.</p>
+                <p class="tokens">On uses 9 slots. This reaches your signed-in sessions.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsState" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Automation and QA</h3>
+                <p class="meta">9 tools: asserts, visual diff, perf timing, network log, schedules.</p>
+                <p class="tokens">On uses 9 slots.</p>
+              </div>
+              <label class="switch"><input type="checkbox" data-transfer="toolsQa" /><span></span></label>
+            </div>
+            </div>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Allow evaluate (JavaScript)</h3>
+                <p class="meta">
+                  Runs any JavaScript the assistant sends inside the current page, including on sites you are signed in to. Leave off unless you need it.
+                </p>
+                <p class="tokens">Needs Interaction depth on. Adds 1 slot.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="evaluate-enabled" /><span></span></label>
             </div>
             </div>
             <h2>Payloads</h2>
@@ -294,6 +364,99 @@
             </div>
             </div>
           </section>
+          <section id="section-activity" class="card-list" hidden>
+            <h2>Activity</h2>
+            <p class="help">
+              Every tool call a connected assistant has made this session. It stays on this computer and clears when you quit.
+            </p>
+            <p class="count-line" id="activity-count">0 calls this session</p>
+            <div class="actions">
+              <button class="chrome-btn" type="button" id="activity-pause">Pause</button>
+              <button class="chrome-btn" type="button" id="activity-clear">Clear</button>
+            </div>
+            <div class="panel">
+              <div class="table-wrap">
+                <table class="grid" id="activity-table"></table>
+              </div>
+            </div>
+          </section>
+          <section id="section-recordings" class="card-list" hidden>
+            <h2>Recordings</h2>
+            <p class="help">
+              Record clicks here and from a connected assistant. Play back later with no model.
+            </p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Recorder</h3>
+                <p class="meta" id="record-status">Not recording</p>
+              </div>
+              <button class="chrome-btn filled" id="record-toggle">Start recording</button>
+            </div>
+            </div>
+            <div class="panel" id="recording-list"></div>
+            <p class="note" id="record-note"></p>
+          </section>
+          <section id="section-testing" class="card-list" hidden>
+            <h2>Product testing</h2>
+            <p class="help">Save screenshots and a short report while you click through a site.</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Current run</h3>
+                <p class="meta" id="test-id">No run in progress</p>
+                <p class="meta" id="test-counts"></p>
+              </div>
+            </div>
+            </div>
+            <div class="actions">
+              <button class="chrome-btn filled" id="test-start">Start run</button>
+              <button class="chrome-btn" id="test-end">End run</button>
+            </div>
+            <p class="note" id="test-note"></p>
+          </section>
+          <section id="section-appearance" class="card-list" hidden>
+            <h2>Appearance</h2>
+            <p class="help">How Echo itself looks. Pages you visit are never restyled.</p>
+            <div class="panel">
+            <div class="card">
+              <div>
+                <h3>Theme</h3>
+                <p class="meta">System follows the light or dark setting of this computer.</p>
+              </div>
+              <div class="segmented" role="radiogroup" aria-label="Theme">
+                <label class="seg"><input type="radio" name="theme" value="system" /><span>System</span></label>
+                <label class="seg"><input type="radio" name="theme" value="light" /><span>Light</span></label>
+                <label class="seg"><input type="radio" name="theme" value="dark" /><span>Dark</span></label>
+              </div>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Compact chrome</h3>
+                <p class="meta">One shorter toolbar row instead of two. Gives the page more height.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="compact-chrome" /><span></span></label>
+            </div>
+            <div class="card stack">
+              <div>
+                <h3>Home page</h3>
+                <p class="meta">Opens in every new tab. Start it with http:// or https://.</p>
+              </div>
+              <div class="field">
+                <input
+                  class="text-input"
+                  id="home-url"
+                  type="text"
+                  spellcheck="false"
+                  autocomplete="off"
+                  placeholder="https://www.google.com"
+                  aria-label="Home page URL"
+                />
+                <button class="chrome-btn" type="button" id="home-url-save">Save</button>
+              </div>
+            </div>
+            </div>
+          </section>
           <section id="section-system" class="card-list" hidden>
             <h2>System</h2>
             <div class="panel">
@@ -306,11 +469,94 @@
             </div>
             <div class="card">
               <div>
+                <h3>Human pacing</h3>
+                <p class="meta">Adds a small random pause before each assistant click or keystroke, so Echo paces like a person on the web instead of firing instantly. Turn off for maximum speed.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="human-pacing" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
+                <h3>Show assistant cursor</h3>
+                <p class="meta">Shows a small cursor moving to what the assistant clicks or types into, so you can see what it's doing.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="show-assistant-cursor" /><span></span></label>
+            </div>
+            <div class="card">
+              <div>
                 <h3>Downloads and reports</h3>
                 <p class="meta">Screenshots, recordings, test runs, and files you download.</p>
               </div>
               <button class="chrome-btn" id="open-data">Open folder</button>
             </div>
+            </div>
+          </section>
+          <section id="section-profile" class="card-list" hidden>
+            <h2>Profile</h2>
+            <p class="help">Stored on this computer. fill_form and profile_suggest_fill reuse these fields to fill job applications faster. Resumes and cover letters are not stored here — attach those with the file upload tool instead.</p>
+            <div class="panel">
+            <div class="card stack">
+              <div class="profile-grid">
+                <div class="profile-field">
+                  <label for="profile-fullName">Full name</label>
+                  <input class="text-input" id="profile-fullName" type="text" autocomplete="name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-firstName">First name</label>
+                  <input class="text-input" id="profile-firstName" type="text" autocomplete="given-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-lastName">Last name</label>
+                  <input class="text-input" id="profile-lastName" type="text" autocomplete="family-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-email">Email</label>
+                  <input class="text-input" id="profile-email" type="email" autocomplete="email" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-phone">Phone</label>
+                  <input class="text-input" id="profile-phone" type="tel" autocomplete="tel" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-addressLine1">Address line 1</label>
+                  <input class="text-input" id="profile-addressLine1" type="text" autocomplete="address-line1" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-addressLine2">Address line 2</label>
+                  <input class="text-input" id="profile-addressLine2" type="text" autocomplete="address-line2" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-city">City</label>
+                  <input class="text-input" id="profile-city" type="text" autocomplete="address-level2" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-state">State / province</label>
+                  <input class="text-input" id="profile-state" type="text" autocomplete="address-level1" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-zip">ZIP / postal code</label>
+                  <input class="text-input" id="profile-zip" type="text" autocomplete="postal-code" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-country">Country</label>
+                  <input class="text-input" id="profile-country" type="text" autocomplete="country-name" spellcheck="false" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-linkedin">LinkedIn</label>
+                  <input class="text-input" id="profile-linkedin" type="text" autocomplete="off" spellcheck="false" placeholder="https://linkedin.com/in/…" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-portfolio">Portfolio</label>
+                  <input class="text-input" id="profile-portfolio" type="text" autocomplete="off" spellcheck="false" placeholder="https://…" />
+                </div>
+                <div class="profile-field">
+                  <label for="profile-github">GitHub</label>
+                  <input class="text-input" id="profile-github" type="text" autocomplete="off" spellcheck="false" placeholder="https://github.com/…" />
+                </div>
+              </div>
+            </div>
+            </div>
+            <div class="actions">
+              <button class="chrome-btn filled" id="profile-save">Save</button>
             </div>
           </section>
           <section id="section-about" class="card-list" hidden>
@@ -342,7 +588,7 @@
           </section>
           <section id="section-privacy" class="card-list legal" hidden>
             <h2>Privacy Policy</h2>
-            <p class="meta">Effective August 19, 2026</p>
+            <p class="meta">Effective August 21, 2026</p>
             <p class="help">Echo runs on your computer. It does not create an account with us and does not upload your browsing to our servers.</p>
             <h3>What stays on your device</h3>
             <ul>
@@ -353,6 +599,9 @@
             <h3>What other companies may see</h3>
             <p>Sites you visit (including Google Search) receive your request, IP address, and cookies under <strong>their</strong> policies.</p>
             <p>If you connect Cursor, Claude Desktop, or another MCP client, that app can see page content, screenshots, and anything you are signed in to here. Their privacy policies apply to that data.</p>
+            <ul>
+              <li>If you turn on Sessions and state, an assistant can read the cookies and storage for sites you are signed in to, including sign-in tokens, and clear that data</li>
+            </ul>
             <h3>What we do not collect</h3>
             <p>We do not run an account system, ads, or our own analytics. We do not sell browsing data.</p>
             <h3>Your choices</h3>
@@ -365,14 +614,14 @@
           </section>
           <section id="section-terms" class="card-list legal" hidden>
             <h2>Terms of Service</h2>
-            <p class="meta">Effective August 19, 2026</p>
+            <p class="meta">Effective August 21, 2026</p>
             <p class="help">By using Echo you agree to these terms. The software is also licensed under MIT (see the LICENSE file).</p>
             <h3>The app</h3>
             <p>Echo is a desktop browser with an optional MCP server. It does not sell model API credits. You use your own Cursor, Claude, or other MCP client subscription if you connect one.</p>
             <h3>Acceptable use</h3>
             <p>You agree not to use the app to break the law; attack or access systems without permission; bypass security you are not authorized to test; distribute malware; harm minors; or abuse third-party sites in violation of their terms. You are responsible for sites you visit and for actions a connected assistant takes in this window.</p>
             <h3>AI control</h3>
-            <p>Connecting Cursor, Claude Desktop, or another MCP client authorizes that assistant to navigate, click, type, capture screenshots, read pages, and start or play recordings. Do not connect it to accounts or data you are not allowed to share.</p>
+            <p>Connecting Cursor, Claude Desktop, or another MCP client authorizes that assistant to navigate, click, type, capture screenshots, read pages, read and write cookies and site storage, clear site data, upload local files and files it writes itself, run JavaScript when you allow it, and start, play, and schedule recordings. Which of those it can reach depends on the switches in Settings, Transfers. Do not connect it to accounts or data you are not allowed to share.</p>
             <h3>Third parties</h3>
             <p>Google, websites you open, Cursor, and Claude have their own terms. We are not affiliated with Google, Cursor, or Anthropic. Looking like Chrome does not make this app Google Chrome.</p>
             <h3>No warranty</h3>

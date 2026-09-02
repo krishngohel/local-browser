@@ -164,22 +164,47 @@ export class Recorder {
   }
 
   async play(id: string, hub: BrowserHub): Promise<PlayResult> {
+    return this.playRange(id, 0, undefined, hub);
+  }
+
+  /**
+   * Plays a slice of a recording: `from` is a 0-based inclusive step index, `to` is
+   * exclusive and defaults to the end. A slice outside the recording throws, the same way
+   * an unknown id does, so the caller reports it rather than silently playing nothing.
+   */
+  async playRange(id: string, from: number, to: number | undefined, hub: BrowserHub): Promise<PlayResult> {
     if (this.current) throw new Error("Stop recording before playing a recording.");
     if (this.playing) throw new Error("A recording is already playing.");
     const rec = this.load(id);
+    const total = rec.actions.length;
+    const start = Number.isInteger(from) ? from : NaN;
+    const end = to === undefined ? total : Number.isInteger(to) ? to : NaN;
+    // Playing a recording with no steps at all is a no-op, not a failure — that is what
+    // `play()` has always answered, and the Play button and scheduler both rely on it. An
+    // explicit range against an empty recording is still a mistake worth reporting.
+    if (total === 0 && start === 0 && to === undefined) {
+      return { ok: true, message: `Played “${rec.name}” (0 steps)` };
+    }
+    if (!(start >= 0) || start >= total) {
+      throw new Error(`“${rec.name}” has ${total} step(s); from ${from} is out of range.`);
+    }
+    if (!(end > start) || end > total) {
+      throw new Error(`“${rec.name}” has ${total} step(s); to ${to} is out of range.`);
+    }
+    const steps = rec.actions.slice(start, end);
     this.playing = true;
     this.onChange();
     try {
-      for (let i = 0; i < rec.actions.length; i++) {
-        const action = rec.actions[i];
+      for (let i = 0; i < steps.length; i++) {
+        const action = steps[i];
         try {
           await this.run(hub, action);
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          throw new Error(`Stopped at step ${i + 1} (${action.type}): ${reason}`);
+          throw new Error(`Stopped at step ${start + i + 1} (${action.type}): ${reason}`);
         }
       }
-      return { ok: true, message: `Played “${rec.name}” (${rec.actions.length} steps)` };
+      return { ok: true, message: `Played “${rec.name}” steps ${start + 1}–${end}` };
     } catch (error) {
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     } finally {
@@ -191,20 +216,27 @@ export class Recorder {
   private async run(hub: BrowserHub, action: RecordedAction): Promise<void> {
     switch (action.type) {
       case "navigate":
-        await hub.navigate(action.url);
+        await hub.assistantNavigate(action.url);
         await hub.waitFor({ timeoutMs: 15000, record: false });
         await sleep(350);
         return;
       case "newTab":
-        hub.createTab(action.url);
+        hub.assistantCreateTab(action.url);
         await hub.waitFor({ timeoutMs: 15000, record: false });
         await sleep(350);
         return;
       case "selectTab": {
-        const tabs = hub.listTabs();
+        // Only tabs that can actually be attached are candidates: an applications-grid tab can
+        // hold the recorded URL without ever being showable, and matching one would turn a
+        // replay into an error for no reason.
+        const tabs = hub.listTabs().filter((tab) => !tab.osr);
         const match =
           tabs.find((tab) => tab.url === action.url) ||
           (action.title ? tabs.find((tab) => tab.title === action.title) : undefined);
+        // No match is a step this recording cannot reproduce here, and has always been skipped.
+        // A match that refuses (a grid session is open, so nothing can be attached) is
+        // different: every later step would run against the wrong tab, so let it stop the run
+        // — `playSteps` turns it into "Stopped at step N (selectTab): …" rather than a crash.
         if (match) hub.selectTab(match.id, { record: false });
         await sleep(150);
         return;
@@ -229,6 +261,10 @@ export class Recorder {
         } catch {
           /* already idle */
         }
+        return;
+      case "hover":
+        await hub.hoverSelectors(action.selectors);
+        await sleep(200);
         return;
       case "type":
         await hub.typeSelectors(action.selectors, action.text, Boolean(action.submit), action.name);

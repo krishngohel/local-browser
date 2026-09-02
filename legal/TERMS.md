@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Effective date:** August 19, 2026  
+**Effective date:** August 21, 2026  
 **Product:** Echo (the “App”)
 
 These terms govern your use of the App. They are a starting template based on how the software works, not a substitute for advice from a lawyer.
@@ -26,7 +26,7 @@ You are responsible for the sites you visit and for what a connected assistant d
 
 ## 3. AI control
 
-If you connect Cursor, Claude Desktop, or another MCP client, you authorize that assistant to navigate, click, type, capture screenshots, read page content, and start or play recordings in this App. You must not connect it to accounts or data you are not allowed to share with that assistant.
+If you connect Cursor, Claude Desktop, or another MCP client, you authorize that assistant to navigate, click, type, capture screenshots, read page content, read and write cookies and site storage, clear site data, upload local files and files it writes itself, run JavaScript when you allow it, and start, play, and schedule recordings in this App. Which of those it can reach depends on the tool switches in Settings, Transfers. You must not connect it to accounts or data you are not allowed to share with that assistant.
 
 ## 4. Third-party services
 

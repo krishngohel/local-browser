@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Echo fixtures</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 24px; color: #202124; background: #fff; }
+    ul { line-height: 1.9; }
+    #hover-me { padding: 8px 14px; font-size: 16px; }
+    #out { margin-top: 16px; padding: 8px; border: 1px solid #ccc; min-height: 24px; }
+  </style>
+</head>
+<body>
+  <h1>Echo fixtures</h1>
+  <p>Static pages the end-to-end MCP tool test drives.</p>
+  <ul>
+    <li><a href="forms.html">Forms</a></li>
+    <li><a href="tables.html">Tables</a></li>
+    <li><a href="iframes.html">Iframes</a></li>
+    <li><a href="dialogs.html">Dialogs</a></li>
+    <li><a href="drag.html">Drag</a></li>
+    <li><a href="slow.html">Slow</a></li>
+    <li><a href="storage.html">Storage</a></li>
+    <li><a href="perf.html">Perf</a></li>
+  </ul>
+  <button type="button" id="hover-me">hover me</button>
+  <div id="out">idle</div>
+  <script>
+    // Deliberate, so console_errors has something of its own to find.
+    console.error('echo fixture console error');
+    var out = document.getElementById('out');
+    var hover = document.getElementById('hover-me');
+    hover.addEventListener('mouseover', function () { out.textContent = 'hovered'; });
+    document.addEventListener('dblclick', function () { out.textContent = 'double'; });
+    document.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      out.textContent = 'context';
+    });
+  </script>
+</body>
+</html>

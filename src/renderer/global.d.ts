@@ -1,4 +1,5 @@
-import type { AppState, ConnectResult, ConnectSnippets, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 declare global {
   interface Window {
@@ -8,9 +9,19 @@ declare global {
       back: () => Promise<void>;
       forward: () => Promise<void>;
       reload: () => Promise<void>;
+      stop: () => Promise<void>;
       newTab: () => Promise<void>;
       selectTab: (id: string) => Promise<void>;
       closeTab: (id: string) => Promise<void>;
+      newIncognitoTab: () => Promise<void>;
+      reorderTab: (id: string, index: number) => Promise<void>;
+      tabThumbnail: (id: string) => Promise<string>;
+      setChromeHeight: (px: number) => Promise<void>;
+      setOverlay: (px: number) => Promise<void>;
+      addBookmark: () => Promise<BookmarkInfo | null>;
+      removeBookmark: (idOrUrl: string) => Promise<boolean>;
+      listBookmarks: () => Promise<BookmarkInfo[]>;
+      searchHistory: (q: string) => Promise<HistoryEntry[]>;
       search: (query: string) => Promise<void>;
       connectCursor: () => Promise<ConnectResult>;
       connectClaude: () => Promise<ConnectResult>;
@@ -31,11 +42,21 @@ declare global {
       setAutostart: (enabled: boolean) => Promise<boolean>;
       setTransfer: (next: Partial<TransferPrefs>) => Promise<TransferPrefs>;
       setSettings: (open: boolean) => Promise<void>;
+      getSettings: () => Promise<AppSettings>;
+      updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
+      getProfile: () => Promise<Profile>;
+      updateProfile: (next: Partial<Profile>) => Promise<Profile>;
+      toolManifest: () => Promise<ToolManifestEntry[]>;
+      setPaused: (p: boolean) => Promise<boolean>;
+      clearActivity: () => Promise<void>;
       openMenu: () => Promise<void>;
       onState: (cb: (state: AppState) => void) => () => void;
       onOpenSettings: (cb: (section?: string) => void) => void;
       onFocusOmnibox: (cb: () => void) => void;
       onCloseSettings: (cb: () => void) => void;
+      onToggleBookmark: (cb: () => void) => void;
+      onOpenPalette: (cb: () => void) => void;
+      onGridFrame: (cb: (frame: GridFrame) => void) => () => void;
     };
   }
 }

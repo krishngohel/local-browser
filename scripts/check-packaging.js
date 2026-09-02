@@ -13,6 +13,8 @@ const required = [
   "skills/ECHO-SKILL-TREE.md",
   "package.json",
   "scripts/echo-mcp-bridge.cjs",
+  "scripts/fixture-server.mjs",
+  "scripts/test-tools.mjs",
 ];
 
 let failed = false;
@@ -47,6 +49,34 @@ if (!mac) {
   for (const key of ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSLocalNetworkUsageDescription"]) {
     if (!info[key]) {
       console.error(`build.mac.extendInfo is missing ${key}`);
+      failed = true;
+    }
+  }
+}
+
+// Built output: the renderer and main bundle must carry the 1.1 surface.
+// Skipped (with a note, not a failure) on a clean checkout so this script still runs standalone.
+const outDir = path.join(root, "out");
+const bundled = fs.existsSync(outDir)
+  ? [
+      { rel: "out/renderer/index.html", needles: ['id="assistant-pill"', 'id="section-tools"'] },
+      { rel: "out/main/index.js", needles: ['"toolsQa"', '"settings.json"'] },
+    ]
+  : [];
+if (!bundled.length) {
+  console.log("NOTE: out/ is missing, so the built-output checks were skipped. Run npm run build:prod first to check them.");
+}
+for (const { rel, needles } of bundled) {
+  const file = path.join(root, rel);
+  if (!fs.existsSync(file)) {
+    console.error(`Missing build output: ${rel} (run npm run build:prod first)`);
+    failed = true;
+    continue;
+  }
+  const text = fs.readFileSync(file, "utf8");
+  for (const needle of needles) {
+    if (!text.includes(needle)) {
+      console.error(`${rel} does not contain ${needle}`);
       failed = true;
     }
   }

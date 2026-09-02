@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Child frame</title>
+  <style>
+    body { font: 16px system-ui, sans-serif; margin: 12px; color: #202124; background: #f6f7f9; }
+  </style>
+</head>
+<body>
+  <p>Child document.</p>
+  <button type="button" id="inner">inner button</button>
+  <div id="out">idle</div>
+  <script>
+    document.getElementById('inner').addEventListener('click', function () {
+      document.getElementById('out').textContent = 'inner clicked';
+    });
+  </script>
+</body>
+</html>

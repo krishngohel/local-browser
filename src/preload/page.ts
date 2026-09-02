@@ -1,4 +1,4 @@
-import { ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 
 const INTERACTIVE =
   'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
@@ -127,3 +127,107 @@ window.addEventListener(
 );
 
 window.addEventListener("blur", () => flushType(false), true);
+
+// --- Web vitals -------------------------------------------------------------------------
+//
+// LCP and CLS can only be read by an observer that was watching from the start of the page,
+// so they are collected here rather than by a script the hub injects later. The values live
+// in the isolated world; the page (and so `perf_timing`, which evaluates in the main world)
+// reaches them through one exposed getter. An object of live numbers cannot cross the bridge
+// — only the function can — hence `__echoPerf.get()` rather than `__echoPerf.lcp`.
+
+let lcp: number | null = null;
+let cls: number | null = null;
+
+function observe(type: string, onEntry: (entry: PerformanceEntry) => void): void {
+  try {
+    // `buffered` replays entries that fired before this observer existed.
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) onEntry(entry);
+    }).observe({ type, buffered: true } as PerformanceObserverInit);
+  } catch {
+    /* the browser may not support this entry type; the value simply stays null */
+  }
+}
+
+observe("largest-contentful-paint", (entry) => {
+  // Every LCP entry supersedes the last, so the newest one wins.
+  lcp = Math.round(entry.startTime * 100) / 100;
+});
+
+observe("layout-shift", (entry) => {
+  const shift = entry as PerformanceEntry & { value?: number; hadRecentInput?: boolean };
+  // Shifts within 500ms of a user interaction are expected, and Core Web Vitals excludes them.
+  if (shift.hadRecentInput) return;
+  cls = Math.round(((cls ?? 0) + (shift.value ?? 0)) * 10000) / 10000;
+});
+
+try {
+  contextBridge.exposeInMainWorld("__echoPerf", {
+    get: () => ({ lcp, cls }),
+  });
+} catch {
+  /* already exposed, or context isolation is off; perf_timing falls back to nulls */
+}
+
+// --- JavaScript dialogs -----------------------------------------------------------------
+//
+// alert/confirm/prompt are answered here, in the page, rather than through Playwright.
+// Electron cancels every JS dialog raised inside a BrowserView within a few milliseconds and
+// does not implement `window.prompt` at all, so a CDP round trip can never win the race.
+// Overriding the three functions in the main world makes the tab's `dialog` policy the thing
+// that decides, and lets the main process record what the page asked.
+//
+// `sendSync` is deliberate: alert/confirm/prompt are synchronous by contract, so the answer
+// has to be in hand before the call returns.
+
+type DialogAnswer = { accept: boolean; promptText: string | null };
+
+function answerDialog(type: string, message: string): DialogAnswer {
+  try {
+    const reply = ipcRenderer.sendSync("echo:dialog", {
+      type,
+      message: String(message ?? "").slice(0, 500),
+    }) as DialogAnswer | undefined;
+    if (reply && typeof reply === "object" && typeof reply.accept === "boolean") return reply;
+  } catch {
+    /* the main process is gone or has no handler; fall through to the safe answer */
+  }
+  return { accept: false, promptText: null };
+}
+
+/**
+ * Installs the three overrides in the main world, where the page's own scripts see them.
+ *
+ * `executeInMainWorld` serialises this function and hands `answerDialog` across as a proxy,
+ * so the callback lives only in the closure below — unlike `exposeInMainWorld`, it leaves
+ * nothing on `window` for the page to find or call. The function is re-compiled in the main
+ * world, so it must reference nothing outside its own arguments.
+ */
+function installDialogShim(answer: (type: string, message: string) => DialogAnswer): void {
+  const ask = (type: string, message: unknown): DialogAnswer => {
+    try {
+      return answer(type, message == null ? "" : String(message));
+    } catch {
+      return { accept: false, promptText: null };
+    }
+  };
+  window.alert = function alert(message?: unknown): void {
+    ask("alert", message);
+  };
+  window.confirm = function confirm(message?: unknown): boolean {
+    return ask("confirm", message).accept === true;
+  };
+  window.prompt = function prompt(message?: unknown, defaultValue?: unknown): string | null {
+    const answered = ask("prompt", message);
+    if (!answered.accept) return null;
+    if (answered.promptText != null) return String(answered.promptText);
+    return defaultValue == null ? "" : String(defaultValue);
+  };
+}
+
+try {
+  contextBridge.executeInMainWorld({ func: installDialogShim, args: [answerDialog] });
+} catch {
+  /* without the shim the page keeps Electron's own behaviour: every dialog is cancelled */
+}

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppState, ConnectResult, ConnectSnippets, PlayResult, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 contextBridge.exposeInMainWorld("lb", {
   getState: (): Promise<AppState> => ipcRenderer.invoke("state"),
@@ -7,9 +8,19 @@ contextBridge.exposeInMainWorld("lb", {
   back: () => ipcRenderer.invoke("back"),
   forward: () => ipcRenderer.invoke("forward"),
   reload: () => ipcRenderer.invoke("reload"),
+  stop: () => ipcRenderer.invoke("stop"),
   newTab: () => ipcRenderer.invoke("tabs:new"),
   selectTab: (id: string) => ipcRenderer.invoke("tabs:select", id),
   closeTab: (id: string) => ipcRenderer.invoke("tabs:close", id),
+  newIncognitoTab: () => ipcRenderer.invoke("tabs:new-incognito"),
+  reorderTab: (id: string, index: number) => ipcRenderer.invoke("tabs:reorder", id, index),
+  tabThumbnail: (id: string): Promise<string> => ipcRenderer.invoke("tabs:thumbnail", id),
+  setChromeHeight: (px: number) => ipcRenderer.invoke("chrome:height", px),
+  setOverlay: (px: number) => ipcRenderer.invoke("chrome:overlay", px),
+  addBookmark: (): Promise<BookmarkInfo | null> => ipcRenderer.invoke("bookmarks:add"),
+  removeBookmark: (idOrUrl: string): Promise<boolean> => ipcRenderer.invoke("bookmarks:remove", idOrUrl),
+  listBookmarks: (): Promise<BookmarkInfo[]> => ipcRenderer.invoke("bookmarks:list"),
+  searchHistory: (q: string): Promise<HistoryEntry[]> => ipcRenderer.invoke("history:search", q),
   search: (query: string) => ipcRenderer.invoke("search", query),
   connectCursor: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:cursor"),
   connectClaude: (): Promise<ConnectResult> => ipcRenderer.invoke("connect:claude"),
@@ -30,6 +41,13 @@ contextBridge.exposeInMainWorld("lb", {
   setAutostart: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke("autostart:set", enabled),
   setTransfer: (next: Partial<TransferPrefs>): Promise<TransferPrefs> => ipcRenderer.invoke("transfer:set", next),
   setSettings: (open: boolean) => ipcRenderer.invoke("settings:set", open),
+  getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("settings:get"),
+  updateSettings: (next: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("settings:update", next),
+  getProfile: (): Promise<Profile> => ipcRenderer.invoke("profile:get"),
+  updateProfile: (next: Partial<Profile>): Promise<Profile> => ipcRenderer.invoke("profile:update", next),
+  toolManifest: (): Promise<ToolManifestEntry[]> => ipcRenderer.invoke("tools:manifest"),
+  setPaused: (p: boolean): Promise<boolean> => ipcRenderer.invoke("activity:pause", p),
+  clearActivity: () => ipcRenderer.invoke("activity:clear"),
   openMenu: () => ipcRenderer.invoke("menu:app"),
   onState: (cb: (state: AppState) => void) => {
     const listener = (_event: unknown, state: AppState) => cb(state);
@@ -44,5 +62,17 @@ contextBridge.exposeInMainWorld("lb", {
   },
   onCloseSettings: (cb: () => void) => {
     ipcRenderer.on("close-settings", cb);
+  },
+  onToggleBookmark: (cb: () => void) => {
+    ipcRenderer.on("toggle-bookmark", cb);
+  },
+  onOpenPalette: (cb: () => void) => {
+    ipcRenderer.on("open-palette", cb);
+  },
+  /** Frames from OSR ("applications" grid) tabs, ~12 per second per tile. */
+  onGridFrame: (cb: (frame: GridFrame) => void) => {
+    const listener = (_event: unknown, frame: GridFrame) => cb(frame);
+    ipcRenderer.on("grid:frame", listener);
+    return () => ipcRenderer.removeListener("grid:frame", listener);
   },
 });
