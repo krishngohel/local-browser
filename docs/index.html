@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Echo — a desktop browser your AI can drive</title>
+<meta name="description" content="Echo is a local desktop browser that Cursor, Claude, ChatGPT/Codex, and other MCP clients can drive directly. No cloud Chromium, no model API — the window you see is the window it controls." />
+<link rel="icon" href="icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --ink-950: #081531;
+    --ink-900: #0d1f47;
+    --ink-800: #14356f;
+    --blue-600: #1a73e8;
+    --blue-500: #3a86ea;
+    --blue-400: #86b3ee;
+    --blue-200: #d3e3fb;
+    --paper: #f5f7fb;
+    --paper-line: #dde4ee;
+    --ink-text: #101f33;
+    --muted: #5b6b82;
+    --white: #ffffff;
+    --sans: 'IBM Plex Sans', -apple-system, Segoe UI, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink-text);
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; display: block; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--blue-600); outline-offset: 3px; }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+
+  /* ---------- nav ---------- */
+  nav.top {
+    position: relative;
+    z-index: 5;
+    padding: 24px 0 0;
+  }
+  nav.top .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    font-size: 17px;
+    letter-spacing: 0.01em;
+    color: var(--white);
+  }
+  .brand img { width: 26px; height: 26px; border-radius: 6px; }
+  .nav-link {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--blue-200);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .nav-link:hover { color: var(--white); border-color: var(--blue-200); }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative;
+    overflow: hidden;
+    background: radial-gradient(ellipse 900px 520px at 50% -8%, var(--ink-800), var(--ink-900) 55%, var(--ink-950) 100%);
+    padding-bottom: 88px;
+  }
+  .arcs {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+  }
+  .arcs circle {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.055);
+    stroke-width: 1;
+  }
+  .arcs circle:nth-child(1) { stroke: rgba(134, 179, 238, 0.14); }
+  .arcs circle:nth-child(2) { stroke: rgba(134, 179, 238, 0.10); }
+
+  .hero-inner {
+    position: relative;
+    z-index: 1;
+    padding-top: 76px;
+    text-align: center;
+  }
+
+  .mark {
+    position: relative;
+    width: 148px;
+    height: 148px;
+    margin: 0 auto 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mark img {
+    width: 84px;
+    height: 84px;
+    border-radius: 20px;
+    position: relative;
+    z-index: 2;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+  }
+  .ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 84px; height: 84px;
+    margin: -42px 0 0 -42px;
+    border-radius: 50%;
+    border: 1px solid var(--blue-400);
+    opacity: 0;
+    animation: ringPulse 1.9s cubic-bezier(0.16, 0.8, 0.24, 1) forwards;
+  }
+  .ring2 { animation-delay: 0.28s; }
+  .ring3 { animation-delay: 0.56s; }
+  @keyframes ringPulse {
+    0%   { transform: scale(0.6); opacity: 0.85; }
+    100% { transform: scale(3.6); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ring { animation: none; opacity: 0; }
+  }
+
+  .wordmark {
+    margin: 0;
+    font-size: clamp(40px, 8vw, 60px);
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--white);
+  }
+  .tagline {
+    margin: 22px auto 0;
+    max-width: 560px;
+    font-size: clamp(19px, 2.6vw, 23px);
+    font-weight: 500;
+    color: var(--white);
+    line-height: 1.4;
+  }
+  .subline {
+    margin: 14px auto 0;
+    max-width: 460px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--blue-200);
+  }
+
+  .cta-area { margin-top: 40px; }
+  .cta-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--white);
+    color: var(--ink-950);
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 16px;
+    text-decoration: none;
+    padding: 15px 30px;
+    border-radius: 10px;
+    box-shadow: 0 14px 34px rgba(3, 12, 33, 0.35);
+    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  }
+  .cta-primary:hover {
+    background: var(--blue-600);
+    color: var(--white);
+    transform: translateY(-1px);
+  }
+  .cta-primary svg { width: 17px; height: 17px; }
+
+  .cta-secondary {
+    margin-top: 16px;
+    font-size: 13.5px;
+    color: var(--blue-400);
+  }
+  .cta-secondary a {
+    color: var(--blue-200);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(211, 227, 251, 0.35);
+  }
+  .cta-secondary a:hover { color: var(--white); border-color: var(--white); }
+  .cta-secondary .sep { margin: 0 8px; color: rgba(211, 227, 251, 0.4); }
+
+  .version-tag {
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(211, 227, 251, 0.55);
+  }
+
+  /* ---------- sections on paper ---------- */
+  section.on-paper { padding: 84px 0; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--blue-600);
+    margin: 0 0 14px;
+  }
+  .section-head { text-align: center; margin-bottom: 52px; }
+  .section-head h2 {
+    margin: 0;
+    font-size: clamp(24px, 3.4vw, 30px);
+    font-weight: 700;
+    color: var(--ink-text);
+  }
+
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 36px;
+  }
+  .step { position: relative; padding-top: 34px; border-top: 2px solid var(--paper-line); }
+  .step .num {
+    position: absolute;
+    top: -13px; left: 0;
+    background: var(--paper);
+    padding-right: 10px;
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--blue-600);
+    font-weight: 500;
+  }
+  .step h3 {
+    margin: 0 0 8px;
+    font-size: 16.5px;
+    font-weight: 600;
+    color: var(--ink-text);
+  }
+  .step p {
+    margin: 0;
+    font-size: 14.5px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .works-with {
+    text-align: center;
+    padding-top: 0;
+  }
+  .client-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 8px;
+    max-width: 640px;
+    margin: 0 auto;
+  }
+  .client-list span {
+    font-size: 14.5px;
+    color: var(--ink-text);
+    background: var(--white);
+    border: 1px solid var(--paper-line);
+    padding: 8px 16px;
+    border-radius: 999px;
+  }
+
+  footer {
+    border-top: 1px solid var(--paper-line);
+    padding: 32px 0 40px;
+  }
+  footer .wrap {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+  }
+  .foot-link {
+    font-size: 13.5px;
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+  }
+  .foot-link:hover { color: var(--ink-text); border-color: var(--muted); }
+  .legal-links { display: flex; gap: 18px; }
+
+  @media (max-width: 760px) {
+    .wrap { padding-left: 22px; padding-right: 22px; }
+    .steps { grid-template-columns: 1fr 1fr; row-gap: 40px; }
+    section.on-paper { padding: 60px 0; }
+    footer .wrap { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 460px) {
+    .steps { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <svg class="arcs" viewBox="0 0 1200 760" preserveAspectRatio="xMidYMin slice" aria-hidden="true">
+    <circle cx="600" cy="210" r="180" />
+    <circle cx="600" cy="210" r="320" />
+    <circle cx="600" cy="210" r="480" />
+    <circle cx="600" cy="210" r="660" />
+    <circle cx="600" cy="210" r="860" />
+  </svg>
+
+  <nav class="top">
+    <div class="wrap">
+      <div class="brand"><img src="icon.png" alt="" /> Echo</div>
+      <a class="nav-link" href="https://github.com/krishngohel/local-browser" target="_blank" rel="noopener">GitHub ↗</a>
+    </div>
+  </nav>
+
+  <div class="hero-inner wrap">
+    <div class="mark">
+      <div class="ring ring1"></div>
+      <div class="ring ring2"></div>
+      <div class="ring ring3"></div>
+      <img src="icon.png" alt="Echo" />
+    </div>
+
+    <h1 class="wordmark">ECHO</h1>
+    <p class="tagline">A desktop browser your AI can actually drive.</p>
+    <p class="subline">No cloud Chromium. No model API. The window you see is the window it controls.</p>
+
+    <div class="cta-area">
+      <a class="cta-primary" id="primary-cta" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="m7 11 5 5 5-5"/><path d="M5 21h14"/></svg>
+        <span id="primary-cta-label">Download for Windows</span>
+      </a>
+      <p class="cta-secondary" id="secondary-links"></p>
+    </div>
+
+    <p class="version-tag">v1.1.0 · free · unsigned build</p>
+  </div>
+</div>
+
+<section class="on-paper">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">How it works</p>
+      <h2>Four steps to a connected browser</h2>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="num">01</span>
+        <h3>Install &amp; leave it running</h3>
+        <p>Echo lives in your tray (Windows/Linux) or menu bar (Mac). Closing the window just hides it.</p>
+      </div>
+      <div class="step">
+        <span class="num">02</span>
+        <h3>Connect your AI app</h3>
+        <p>Open Settings → Connections and click Connect for Cursor, Claude, ChatGPT/Codex, or any MCP client.</p>
+      </div>
+      <div class="step">
+        <span class="num">03</span>
+        <h3>Restart it</h3>
+        <p>Fully quit and reopen that app so it picks up Echo — not just the chat window.</p>
+      </div>
+      <div class="step">
+        <span class="num">04</span>
+        <h3>Ask it to browse</h3>
+        <p>Tell it to search the web or open a page. It drives the window you see, with your own login.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="on-paper works-with" style="padding-top: 0;">
+  <div class="wrap">
+    <div class="section-head" style="margin-bottom: 28px;">
+      <p class="eyebrow">Works with</p>
+    </div>
+    <div class="client-list">
+      <span>Cursor</span>
+      <span>Claude</span>
+      <span>ChatGPT / Codex</span>
+      <span>Continue</span>
+      <span>Cline</span>
+      <span>Windsurf</span>
+      <span>VS Code</span>
+      <span>any MCP client</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <a class="foot-link" href="https://github.com/krishngohel/local-browser#readme" target="_blank" rel="noopener">Full docs &amp; troubleshooting on GitHub ↗</a>
+    <div class="legal-links">
+      <a class="foot-link" href="https://github.com/krishngohel/local-browser/blob/main/legal/PRIVACY.md" target="_blank" rel="noopener">Privacy</a>
+      <a class="foot-link" href="https://github.com/krishngohel/local-browser/blob/main/legal/TERMS.md" target="_blank" rel="noopener">Terms</a>
+      <a class="foot-link" href="https://github.com/krishngohel/local-browser/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var BASE = "https://github.com/krishngohel/local-browser/releases/download/v1.1.0/";
+    var ASSETS = {
+      winX64:  { label: "Windows",              short: "Windows",        file: "Echo-Setup-1.1.0-x64.exe" },
+      winArm:  { label: "Windows (ARM)",        short: "Windows (ARM)",  file: "Echo-Setup-1.1.0-arm64.exe" },
+      mac:     { label: "Mac (Apple Silicon)",  short: "Mac",            file: "Echo-1.1.0-mac-arm64.dmg" },
+      linux:   { label: "Linux",                short: "Linux",         file: "Echo-1.1.0-linux-x86_64.AppImage" }
+    };
+
+    function detectPrimary() {
+      var ua = navigator.userAgent || "";
+      var platform = navigator.platform || "";
+      if (/Mac/i.test(platform) || /Macintosh/i.test(ua)) return "mac";
+      if (/Linux/i.test(platform) && !/Android/i.test(ua)) return "linux";
+      return "winX64"; // default: Windows is the majority platform per the repo's install docs
+    }
+
+    var primaryKey = detectPrimary();
+    var primary = ASSETS[primaryKey];
+
+    var cta = document.getElementById("primary-cta");
+    var label = document.getElementById("primary-cta-label");
+    cta.href = BASE + primary.file;
+    label.textContent = "Download for " + primary.short;
+
+    var secondaryKeys = Object.keys(ASSETS).filter(function (k) { return k !== primaryKey; });
+    var secondaryEl = document.getElementById("secondary-links");
+    secondaryEl.innerHTML = "also available for " + secondaryKeys.map(function (k) {
+      var a = ASSETS[k];
+      return '<a href="' + BASE + a.file + '">' + a.label + "</a>";
+    }).join('<span class="sep">·</span>');
+  })();
+</script>
+
+</body>
+</html>
