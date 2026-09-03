@@ -46,6 +46,8 @@ declare global {
       updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
       getProfile: () => Promise<Profile>;
       updateProfile: (next: Partial<Profile>) => Promise<Profile>;
+      applyUpdate: () => Promise<void>;
+      viewUpdateRelease: () => Promise<void>;
       toolManifest: () => Promise<ToolManifestEntry[]>;
       setPaused: (p: boolean) => Promise<boolean>;
       clearActivity: () => Promise<void>;
