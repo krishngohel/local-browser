@@ -183,9 +183,18 @@ async function prepareAgent(page: PwPage, kind: string): Promise<CaptchaSolveRes
 
 async function applyAgent(page: PwPage, kind: string, judgment: CaptchaJudgment): Promise<CaptchaSolveResult> {
   prunePending();
-  const pendingKind = judgment.challengeId ? pending.get(judgment.challengeId)?.kind : kind;
-  const useKind = pendingKind ?? kind;
-  if (judgment.challengeId) pending.delete(judgment.challengeId);
+  let useKind = kind;
+  if (judgment.challengeId) {
+    const item = pending.get(judgment.challengeId);
+    if (!item) {
+      return handoff(
+        kind,
+        "That challengeId expired or is unknown. Call captcha_solve again without tiles/text/offsetPx to get fresh images.",
+      );
+    }
+    useKind = item.kind;
+    pending.delete(judgment.challengeId);
+  }
   if (useKind === "recaptcha") return applyRecaptcha(page, judgment);
   if (useKind === "text") return applyText(page, judgment);
   if (useKind === "slider") return applySlider(page, judgment);

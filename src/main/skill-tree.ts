@@ -62,7 +62,7 @@ export function mcpInstructions(): string {
     "Echo is a local Chrome-compatible desktop browser on THIS computer. Drive it with these tools.",
     "Do not invent CSS selectors. Do not ask for evaluate / arbitrary JavaScript (not exposed).",
     "snapshot before click/type/fill using refs (e0, e1). Call echo_help or read echo://docs/skill-tree if you need the full guide.",
-    "Stop on login/2FA and ask the user to finish it in the Echo window, then wait_for. For a visible CAPTCHA, call captcha_solve if available; otherwise ask the user.",
+    "Stop on login/2FA and ask the user to finish it in the Echo window, then wait_for. For a visible CAPTCHA, call captcha_solve if available (Connected assistant may return images — look at them and call again with tiles/text/offsetPx; you may refuse and ask the user); otherwise ask the user.",
     "Before a submit-style click, call captcha_check: if present but not visible (score-based, not a puzzle), don't click it yourself — hover its ref and ask the user to click it.",
   ].join("\n");
   if (!getTransferPrefs().skillTreeOnConnect) return compact;
