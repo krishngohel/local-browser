@@ -14,13 +14,19 @@ jobs:
         include:
           - os: windows-latest
             dist: dist:win
-            artifact: "dist-installer/Echo-Setup-*.exe"
+            artifact: |
+              dist-installer/Echo-Setup-*.exe
+              dist-installer/latest.yml
+              dist-installer/Echo-Setup-*.exe.blockmap
           - os: macos-latest
             dist: dist:mac
             artifact: "dist-installer/Echo-*.dmg"
           - os: ubuntu-latest
             dist: dist:linux
-            artifact: "dist-installer/Echo-*.AppImage"
+            artifact: |
+              dist-installer/Echo-*.AppImage
+              dist-installer/latest-linux.yml
+              dist-installer/Echo-*.AppImage.blockmap
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:

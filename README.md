@@ -223,6 +223,8 @@ The assistant should call tools such as `search_web`, `navigate`, and `snapshot`
 
 **Token usage and tool count:** Settings → Transfers. Turn off page photos, watch frames, or the skill tree on connect if you want fewer tokens. A fresh install exposes **40 tools**; Cursor and some other clients get unreliable past roughly 40 tools across every MCP server at once, so turn groups off if that cap bites. Reconnect the AI client after changing tool groups.
 
+**Updates:** Windows and Linux check for a new version automatically and download it in the background — Settings → About shows "Restart now" once it's ready, and it never restarts on its own. Mac doesn't auto-update (no code-signing certificate yet); Settings → About shows a "View release" link when a newer version exists, for a manual reinstall.
+
 ---
 
 ## Run from source (developers)
@@ -375,6 +377,8 @@ Also in the app: **Settings → About**, **Privacy**, **Terms**.
 GitHub Actions (`.github/workflows/release.yml`) builds Windows, Mac, and Linux installers on **`v*` tags** (for example `git tag v1.0.0 && git push origin v1.0.0`). Manual **Run workflow** uploads artifacts to the Actions run but does not create a Release page.
 
 Mac and Windows builds are unsigned unless signing secrets are configured.
+
+Every tagged release is also what installed Windows/Linux copies auto-update to (Mac gets a manual-reinstall notice instead — see Day-to-day use, above). There's no separate "ship an update" step: tagging a release *is* shipping the update.
 
 | Script | What it does |
 | --- | --- |
