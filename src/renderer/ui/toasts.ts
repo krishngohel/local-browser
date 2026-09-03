@@ -29,6 +29,19 @@ export function toast(message: string, kind: Kind = "info", action?: ToastAction
       remeasureToasts();
     });
     item.append(btn);
+    // Action-toasts skip the auto-dismiss timer below, so without this the toast (and the
+    // overlay strip it reserves) would stay put for the rest of the session unless the user
+    // clicks the action itself. This is the escape hatch that doesn't require restarting the app.
+    const dismiss = h("button", {
+      class: "toast-dismiss",
+      "aria-label": "Dismiss",
+      text: "×",
+    });
+    dismiss.addEventListener("click", () => {
+      item.remove();
+      remeasureToasts();
+    });
+    item.append(dismiss);
   }
   root.append(item);
   while (root.children.length > MAX) root.firstElementChild?.remove();

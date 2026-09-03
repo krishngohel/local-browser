@@ -1015,6 +1015,13 @@ body.settings-open .toasts {
   color: var(--ink);
   font-size: 12.5px;
   animation: toast-in 150ms ease;
+  pointer-events: none;
+}
+
+/* Only an actionable toast (has a click target and sticks around past the usual 3.5s) needs
+   to catch pointer events. A plain auto-dismissing toast must stay click-through so it never
+   blocks the region under it, e.g. over Settings. */
+.toast:has(.toast-action) {
   pointer-events: auto;
 }
 
@@ -1043,6 +1050,23 @@ body.settings-open .toasts {
 
 .toast-action:hover {
   text-decoration: underline;
+}
+
+.toast-dismiss {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 2px;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--ink);
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.toast-dismiss:hover {
+  opacity: 1;
 }
 
 @keyframes toast-in {

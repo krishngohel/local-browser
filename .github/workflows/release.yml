@@ -46,6 +46,14 @@ jobs:
       - run: npm run test:bridge # builds out/ as a side effect
       - run: npm run packaging:check
       - run: npm run ${{ matrix.dist }}
+      - name: Verify update feed metadata was generated
+        if: runner.os == 'Windows'
+        shell: bash
+        run: test -f dist-installer/latest.yml || (echo "::error::latest.yml was not generated" && exit 1)
+      - name: Verify update feed metadata was generated
+        if: runner.os == 'Linux'
+        shell: bash
+        run: test -f dist-installer/latest-linux.yml || (echo "::error::latest-linux.yml was not generated" && exit 1)
       - name: Test packaged Windows Claude bridge
         if: runner.os == 'Windows'
         shell: pwsh

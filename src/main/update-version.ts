@@ -4,7 +4,12 @@
  */
 
 /** Compares dotted numeric versions ("1.2.0" or "v1.2.0"). Malformed input is never treated
- *  as newer, so a broken or unexpected feed response can never trigger an update. */
+ *  as newer, so a broken or unexpected feed response can never trigger an update.
+ *
+ *  Note: this strict `\d+.\d+.\d+` parsing has no pre-release/build-metadata support (no
+ *  "-beta.1" or "+build5"), so it uses different version semantics than electron-updater's own
+ *  semver comparison against latest.yml on the Windows/Linux path. That's fine today since this
+ *  project has never tagged a pre-release, but would need reconciling if it ever does. */
 export function isNewer(current: string, latestTag: string): boolean {
   const a = parseVersion(current);
   const b = parseVersion(latestTag);

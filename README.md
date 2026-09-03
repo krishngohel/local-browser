@@ -223,7 +223,7 @@ The assistant should call tools such as `search_web`, `navigate`, and `snapshot`
 
 **Token usage and tool count:** Settings → Transfers. Turn off page photos, watch frames, or the skill tree on connect if you want fewer tokens. A fresh install exposes **40 tools**; Cursor and some other clients get unreliable past roughly 40 tools across every MCP server at once, so turn groups off if that cap bites. Reconnect the AI client after changing tool groups.
 
-**Updates:** Windows and Linux check for a new version automatically and download it in the background — Settings → About shows "Restart now" once it's ready, and it never restarts on its own. Mac doesn't auto-update (no code-signing certificate yet); Settings → About shows a "View release" link when a newer version exists, for a manual reinstall.
+**Updates:** Windows and Linux check for a new version automatically and download it in the background — Settings → About shows "Restart now" once it's ready, and it never restarts on its own, though a downloaded update is applied the next time you quit Echo normally, not only via that button (worth knowing since this is a tray app people rarely quit on purpose). Linux auto-update only works when running the actual launched `.AppImage` file, since that's what electron-updater's AppImage support relies on. Mac doesn't auto-update (no code-signing certificate yet); Settings → About shows a "View release" link when a newer version exists, for a manual reinstall.
 
 ---
 

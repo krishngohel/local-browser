@@ -11,7 +11,7 @@ const entries = fs.readdirSync(dir).filter((f) => f.endsWith(".test.ts")).map((f
 if (!entries.length) { console.log("no unit tests"); process.exit(0); }
 esbuild.buildSync({
   entryPoints: entries, bundle: true, platform: "node", target: "node20", format: "cjs",
-  outdir: outDir, outExtension: { ".js": ".cjs" }, external: ["electron", "playwright-core"], sourcemap: "inline", logLevel: "warning",
+  outdir: outDir, outExtension: { ".js": ".cjs" }, external: ["electron", "playwright-core", "electron-updater"], sourcemap: "inline", logLevel: "warning",
 });
 const r = spawnSync(process.execPath, ["--test", ...fs.readdirSync(outDir).filter((f) => f.endsWith(".cjs")).map((f) => path.join(outDir, f))], { stdio: "inherit" });
 process.exit(r.status ?? 1);

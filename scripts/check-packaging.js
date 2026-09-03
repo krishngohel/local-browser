@@ -32,6 +32,19 @@ for (const rel of required) {
 }
 
 const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+
+const asarUnpack = (pkg.build && pkg.build.asarUnpack) || [];
+if (!asarUnpack.some((p) => p.includes("electron-updater"))) {
+  console.error("package.json build.asarUnpack is missing an entry for electron-updater");
+  failed = true;
+}
+
+const publish = pkg.build && pkg.build.publish;
+if (!publish || publish.provider !== "github") {
+  console.error('package.json build.publish must be present with provider: "github"');
+  failed = true;
+}
+
 const mac = pkg.build && pkg.build.mac;
 if (!mac) {
   console.error("package.json is missing build.mac");
