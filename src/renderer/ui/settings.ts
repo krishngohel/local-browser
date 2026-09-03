@@ -217,6 +217,11 @@ export function initSettings(
 
   document.getElementById("profile-save")!.addEventListener("click", () => void saveProfile());
 
+  document.getElementById("update-action")!.addEventListener("click", () => {
+    if (latest?.updateStatus.state === "ready") void window.lb.applyUpdate();
+    else if (latest?.updateStatus.state === "mac-available") void window.lb.viewUpdateRelease();
+  });
+
   const autostart = document.getElementById("autostart") as HTMLInputElement;
   if (window.lb) {
     void window.lb.getAutostart().then((on) => {
@@ -305,6 +310,21 @@ export function renderSettings(next: AppState): void {
 
   text("tool-count", String(next.toolCount));
   text("about-version", `Version ${next.version} · Chromium-based · runs only on this computer`);
+
+  const updateCard = document.getElementById("update-card");
+  if (updateCard) {
+    const ready = next.updateStatus.state === "ready";
+    const macAvailable = next.updateStatus.state === "mac-available";
+    updateCard.hidden = !ready && !macAvailable;
+    if (ready || macAvailable) {
+      text(
+        "update-status",
+        `Echo ${next.updateStatus.version} is ${ready ? "ready to install." : "available."}`,
+      );
+      const btn = document.getElementById("update-action") as HTMLButtonElement | null;
+      if (btn) btn.textContent = ready ? "Restart now" : "View release";
+    }
+  }
 
   const evaluateInput = document.getElementById("evaluate-enabled") as HTMLInputElement | null;
   if (evaluateInput) evaluateInput.checked = next.settings.evaluateEnabled;

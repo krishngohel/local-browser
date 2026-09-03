@@ -37,6 +37,7 @@ const paletteRoot = el("palette");
 
 let state: AppState | null = null;
 let themeKey = "";
+let updateToastKey = "";
 
 function render(next: AppState): void {
   state = next;
@@ -62,6 +63,7 @@ function render(next: AppState): void {
   renderBookmark(next);
   renderRecordButton(next);
   renderSettings(next);
+  renderUpdateToast(next);
 }
 
 let bookmarkOn: boolean | null = null;
@@ -87,6 +89,24 @@ function renderRecordButton(next: AppState): void {
       ? "Stop recording"
       : "Start recording";
   recordBtn.setAttribute("aria-label", recordBtn.title);
+}
+
+function renderUpdateToast(next: AppState): void {
+  const s = next.updateStatus;
+  const key = `${s.state}:${s.version ?? ""}`;
+  if (key === updateToastKey) return;
+  updateToastKey = key;
+  if (s.state === "ready") {
+    toast(`Echo ${s.version} is ready`, "info", {
+      label: "Restart now",
+      onClick: () => void window.lb.applyUpdate(),
+    });
+  } else if (s.state === "mac-available") {
+    toast(`Echo ${s.version} is available`, "info", {
+      label: "View release",
+      onClick: () => void window.lb.viewUpdateRelease(),
+    });
+  }
 }
 
 function toggleBookmark(): void {

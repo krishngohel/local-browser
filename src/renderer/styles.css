@@ -1015,6 +1015,7 @@ body.settings-open .toasts {
   color: var(--ink);
   font-size: 12.5px;
   animation: toast-in 150ms ease;
+  pointer-events: auto;
 }
 
 .toast-icon {
@@ -1026,6 +1027,22 @@ body.settings-open .toasts {
 
 .toast.error .toast-icon {
   fill: var(--danger);
+}
+
+.toast-action {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 2px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.toast-action:hover {
+  text-decoration: underline;
 }
 
 @keyframes toast-in {
