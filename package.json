@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.0",
+    "electron-updater": "^6.3.9",
     "mcp-remote": "^0.1.38",
     "playwright-core": "^1.62.1",
     "zod": "^3.25.0"
@@ -39,6 +40,11 @@
     "appId": "com.echo.browser",
     "productName": "Echo",
     "copyright": "Copyright © 2026 Echo contributors",
+    "publish": {
+      "provider": "github",
+      "owner": "krishngohel",
+      "repo": "local-browser"
+    },
     "artifactName": "Echo-Setup-${version}-${arch}.${ext}",
     "compression": "maximum",
     "directories": {
@@ -53,7 +59,8 @@
     ],
     "asar": true,
     "asarUnpack": [
-      "node_modules/playwright-core/**"
+      "node_modules/playwright-core/**",
+      "node_modules/electron-updater/**"
     ],
     "extraMetadata": {
       "main": "out/main/index.js",

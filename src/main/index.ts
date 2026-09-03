@@ -34,6 +34,7 @@ import { History } from "./history";
 import { Bookmarks } from "./bookmarks";
 import { Downloads } from "./downloads";
 import { DialogPolicies } from "./dialogs";
+import { applyUpdateNow, startUpdateChecks, status as updateStatus } from "./updater";
 
 /**
  * End-to-end test mode (`scripts/test-tools.mjs`).
@@ -118,6 +119,7 @@ function getState(): AppState {
     settings: getSettings(),
     profile: getProfile(),
     bookmarks: { count: bookmarks.list().length, activeBookmarked: bookmarks.has(hub.activeUrl()) },
+    updateStatus: updateStatus(),
   };
 }
 
@@ -441,6 +443,13 @@ function registerIpc(): void {
   });
   ipcMain.handle("profile:get", () => getProfile());
   ipcMain.handle("profile:update", (_e, next: Partial<Profile>) => setProfile(next));
+  ipcMain.handle("update:apply", () => {
+    applyUpdateNow();
+  });
+  ipcMain.handle("update:view-release", () => {
+    const url = updateStatus().releaseUrl;
+    if (url) void shell.openExternal(url);
+  });
   ipcMain.handle("bookmarks:list", () => bookmarks.list());
   ipcMain.handle("bookmarks:add", () => {
     const url = hub.activeUrl();
@@ -707,6 +716,7 @@ if (!gotLock) {
     setMcpSessionListener(broadcast);
     recorder.setOnChange(broadcast);
     activity.setOnChange(broadcast);
+    startUpdateChecks(broadcast);
     hub.setRecorder(recorder);
     // A scheduled replay must not fight a live recording or another replay, so a job that
     // arrives at a busy moment is reported as skipped and simply waits for its next slot.

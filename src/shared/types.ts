@@ -140,6 +140,12 @@ export type ActivityState = {
   recent: ActivityEntry[];
 };
 
+export type UpdateStatus = {
+  state: "idle" | "checking" | "downloading" | "ready" | "mac-available" | "error";
+  version?: string;
+  releaseUrl?: string;
+};
+
 export type AppState = {
   tabs: TabInfo[];
   activeTabId: string | null;
@@ -181,6 +187,7 @@ export type AppState = {
    *  instead of the panel serving stale fields that a later Save would revert. */
   profile: Profile;
   bookmarks: { count: number; activeBookmarked: boolean };
+  updateStatus: UpdateStatus;
 };
 
 export type ConnectResult = {

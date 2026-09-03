@@ -34,6 +34,10 @@ The App does not include an account system, advertising ID, or our own analytics
 
 The App is built on Electron and Chromium. Those components may write local logs. We do not enable a separate “phone home” analytics service in this App.
 
+## Update checks
+
+On Windows and Linux, the App checks GitHub's public release feed roughly every 4 hours for a newer version, and downloads it in the background if one exists. On Mac, the App checks the same feed and shows a notice if a newer version exists, without downloading anything. This request necessarily shares your IP address and the App's version with GitHub's servers, the same as loading any public web page. It is the only outbound network request the App makes on its own initiative, as opposed to sites you navigate to.
+
 ## Children
 
 The App is not directed at children under 13. Do not connect an assistant to a profile used by a child.

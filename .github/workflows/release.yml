@@ -14,13 +14,19 @@ jobs:
         include:
           - os: windows-latest
             dist: dist:win
-            artifact: "dist-installer/Echo-Setup-*.exe"
+            artifact: |
+              dist-installer/Echo-Setup-*.exe
+              dist-installer/latest.yml
+              dist-installer/Echo-Setup-*.exe.blockmap
           - os: macos-latest
             dist: dist:mac
             artifact: "dist-installer/Echo-*.dmg"
           - os: ubuntu-latest
             dist: dist:linux
-            artifact: "dist-installer/Echo-*.AppImage"
+            artifact: |
+              dist-installer/Echo-*.AppImage
+              dist-installer/latest-linux.yml
+              dist-installer/Echo-*.AppImage.blockmap
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     permissions:
@@ -40,6 +46,14 @@ jobs:
       - run: npm run test:bridge # builds out/ as a side effect
       - run: npm run packaging:check
       - run: npm run ${{ matrix.dist }}
+      - name: Verify update feed metadata was generated
+        if: runner.os == 'Windows'
+        shell: bash
+        run: test -f dist-installer/latest.yml || (echo "::error::latest.yml was not generated" && exit 1)
+      - name: Verify update feed metadata was generated
+        if: runner.os == 'Linux'
+        shell: bash
+        run: test -f dist-installer/latest-linux.yml || (echo "::error::latest-linux.yml was not generated" && exit 1)
       - name: Test packaged Windows Claude bridge
         if: runner.os == 'Windows'
         shell: pwsh

@@ -18,7 +18,7 @@ async function main() {
     platform: "node",
     target: "node20",
     outfile: "out/main/index.js",
-    external: ["electron", "playwright-core"],
+    external: ["electron", "playwright-core", "electron-updater"],
   });
 
   await esbuild.build({
