@@ -6,7 +6,8 @@
  * Starts the fixture server and a real Echo (Electron) on a throwaway profile with every
  * tool group switched on, connects an MCP client over Streamable HTTP, and calls every one
  * of the 76 tools at least once. `search_web` is the single exception: it drives live
- * Google, which has no place in a test that must pass offline.
+ * Google, which has no place in a test that must pass offline. `captcha_solve` stays
+ * disabled (no API key in the throwaway profile) and is intentionally not in that 76.
  *
  * Failures are collected rather than thrown, so one broken tool does not hide the rest; the
  * process exits non-zero if any check failed or any tool went uncalled.
@@ -229,6 +230,9 @@ try {
 
   const names = (await client.listTools()).tools.map((t) => t.name).sort();
   assert.equal(names.length, TOTAL_TOOLS, `expected ${TOTAL_TOOLS} tools, got ${names.length}: ${names.join(",")}`);
+  assert.ok(!names.includes("captcha_solve"), "captcha_solve must stay off until the solver is enabled in Settings → System");
+  assert.ok(names.includes("captcha_check"), "captcha_check should be on with Read and data");
+  assert.ok(names.includes("evaluate"), "evaluate should be on in the e2e harness");
 
   const call = async (name, args = {}) => {
     called.add(name);
@@ -881,6 +885,19 @@ try {
   await check("captcha_check on a clean page", async () => {
     await ok("navigate", { url: `${FX}/index.html` });
     assert.equal(JSON.parse((await ok("captcha_check")).text).present, false);
+  });
+
+  await check("captcha_check detects a visible challenge fixture", async () => {
+    await ok("navigate", { url: `${FX}/captcha.html` });
+    const found = JSON.parse((await ok("captcha_check")).text);
+    assert.equal(found.present, true);
+    assert.equal(found.kind, "recaptcha");
+    assert.equal(found.visible, true);
+    assert.equal(found.solver, "off");
+    assert.match(found.action, /Settings → System|Echo window/i);
+    // Restore the tables fixture — the next visual/readable checks expect it.
+    await ok("navigate", { url: `${FX}/tables.html` });
+    await ok("wait_for", { text: "Table fixture" });
   });
 
   await check("screenshot + watch + extract_readable", async () => {

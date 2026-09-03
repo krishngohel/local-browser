@@ -117,14 +117,14 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 | Console and network | 2 | Yes | `console_errors`, `network_failures` |
 | Product tests | 5 | Yes | viewport, test start / assert / end |
 | Recordings | 5 | Yes | record, list, replay, delete |
-| Read and data | 9 | Yes | text, find, links, tables, forms, page info, HTML, PDF text, CAPTCHA check |
+| Read and data | 9 | Yes | text, find, links, tables, forms, page info, HTML, PDF text, CAPTCHA check (`captcha_solve` is extra when enabled in System) |
 | Interaction depth | 11 | No | hover, drag, right-click, dialogs, frames, zoom, file upload, batch-fill a form |
 | Sessions and state | 14 | No | cookies, storage, history, downloads, bookmarks, clear site data, applicant profile, live application sessions |
 | Automation and QA | 9 | No | asserts, visual diff, page speed, request log, schedules |
 
 Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names or writes itself, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens, plus the applicant profile you save for job applications.
 
-That adds up to **41 tools on a fresh install** and **75 with every group on**. One more tool, `evaluate` (run JavaScript in the page), brings the total to **76**, and it needs both Interaction depth and its own switch in Settings → Transfers.
+That adds up to **41 tools on a fresh install** and **75 with every group on**. Two more tools need their own switches: `evaluate` (run JavaScript in the page; Interaction depth plus Settings → Transfers) and `captcha_solve` (vision solver; Read and data plus Settings → System — Connected assistant, or an OpenAI/Gemini API key). With both on, the total is **77**.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
 
@@ -304,7 +304,7 @@ Installers are **unsigned** until an code-signing certificate is added. Use the 
 
 ### Google shows captcha or consent
 
-Complete it in the Echo window. Ask the assistant to wait (`wait_for`) and retry.
+Complete it in the Echo window, or turn on **Settings → System → CAPTCHA solver**. Choose **Connected assistant** (the connected AI looks at challenge images Echo returns) or paste your own OpenAI or Gemini key. Invisible score-based checks still need you to click. Ask the assistant to wait (`wait_for`) and retry.
 
 ### Another device on Wi-Fi cannot connect
 
@@ -336,7 +336,7 @@ On connect, Echo sends a **skill tree** (how to browse, search, screenshot, reco
 
 **Recordings:** `record_start`, `record_stop`, `recordings_list`, `recording_play`, `recording_delete`
 
-**Read and data:** `get_text`, `find`, `links`, `tables`, `forms`, `page_info`, `html`, `pdf_text`, `captcha_check`
+**Read and data:** `get_text`, `find`, `links`, `tables`, `forms`, `page_info`, `html`, `pdf_text`, `captcha_check` (plus `captcha_solve` when the solver is on in Settings → System)
 
 Three more groups are off until you turn them on in Settings → Tools:
 

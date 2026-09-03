@@ -29,7 +29,8 @@ export function mcpUrlForHost(host: string, port = activeMcpPort): string {
 }
 
 export const CDP_PORT = 9333;
-export const CHROME_HEIGHT = 86;
+/** Matches `--chrome-h: 84px` in the renderer (40px tab strip + 44px toolbar). */
+export const CHROME_HEIGHT = 84;
 
 export function userDataDir(): string {
   return app.getPath("userData");

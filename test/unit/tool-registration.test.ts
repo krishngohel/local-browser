@@ -11,6 +11,7 @@ import {
   setTransferPrefs,
   setTransferPrefsDir,
 } from "../../src/main/transfer-prefs";
+import { setCaptchaSolverPrefs, setCaptchaSolverPrefsDir } from "../../src/main/captcha-solver-prefs";
 import { registerTools } from "../../src/mcp/register-tools";
 import { refreshToolAvailability, type ToolDeps, type ToolResult } from "../../src/mcp/tools/_helpers";
 import { TOOL_MANIFEST, type ToolGroup } from "../../src/shared/tool-manifest";
@@ -115,6 +116,15 @@ test("evaluate always registers but stays disabled until the user enables it", (
   }
 });
 
+test("captcha_solve always registers but stays disabled until the solver is configured", () => {
+  const registered = registerAll({ evaluateEnabled: true });
+  const solve = registered.find((t) => t.name === "captcha_solve");
+  assert.ok(solve, "captcha_solve should register");
+  assert.equal(solve.tool.enabled, false, "captcha_solve should be disabled without a configured solver");
+  const check = registered.find((t) => t.name === "captcha_check");
+  assert.ok(check?.tool.enabled, "captcha_check should stay on with Read and data");
+});
+
 /**
  * The bug behind "I can't turn tools on and off": a switch flipped after an assistant connected
  * did nothing, because its tool list was fixed at connect. Tools now register on every session
@@ -141,6 +151,36 @@ test("refreshToolAvailability follows the switches on an already-registered sess
     assert.equal(upload!.tool.enabled, true, "upload_file comes back live when the group is turned on");
   } finally {
     setTransferPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("refreshToolAvailability enables captcha_solve when a key is saved", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-captcha-toggle-"));
+  setTransferPrefsDir(dir);
+  setCaptchaSolverPrefsDir(dir);
+  try {
+    setTransferPrefs(
+      Object.fromEntries(Object.keys(DEFAULT_TRANSFER_PREFS).map((k) => [k, true])) as TransferPrefs,
+    );
+    const reg = registerAll();
+    const solve = reg.find((t) => t.name === "captcha_solve");
+    assert.equal(solve?.tool.enabled, false, "captcha_solve starts disabled");
+    setCaptchaSolverPrefs({ enabled: true, openaiKey: "sk-test" });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, true, "captcha_solve comes on live when a key is saved");
+    setCaptchaSolverPrefs({ enabled: false });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, false, "captcha_solve turns off live when the solver is disabled");
+    setCaptchaSolverPrefs({ enabled: true, provider: "agent", openaiKey: "" });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, true, "captcha_solve comes on for Connected assistant without a key");
+    setCaptchaSolverPrefs({ enabled: true, provider: "openai", openaiKey: "" });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, false, "OpenAI provider stays off without a key");
+  } finally {
+    setTransferPrefsDir(null);
+    setCaptchaSolverPrefsDir(null);
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -155,28 +155,33 @@ export const htmlScript = (ref: string | null, maxChars: number): string => `(()
 })()`;
 
 /**
- * Scans the page for a CAPTCHA or anti-bot interstitial. Detection only — Echo never solves
- * these; the result feeds the hand-off that asks the human at the machine to clear it. Looks
- * for the common widgets (reCAPTCHA, hCaptcha, Cloudflare Turnstile) and the Cloudflare
+ * Scans the page for a CAPTCHA or anti-bot interstitial. Detection only — solving is a
+ * separate opt-in (`captcha_solve`). Looks for the common widgets (reCAPTCHA, hCaptcha,
+ * Cloudflare Turnstile, GeeTest sliders, text CAPTCHA images) and the Cloudflare
  * "checking your browser" interstitial. Returns `{ present, kind, visible }`.
  */
 export const CAPTCHA_SCAN_SCRIPT = `(() => {
-  const onScreen = (el) => {
+  const painted = (el) => {
     if (!el) return false;
     const r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) return false;
+    if (r.width < 2 || r.height < 2) return false;
     const s = getComputedStyle(el);
-    return s.visibility !== 'hidden' && s.display !== 'none';
+    // Do not require the box to intersect the viewport: challenge iframes are often
+    // position:absolute just outside it (or clipped by overflow:hidden). That is a
+    // display bug to fix, not an invisible/score-based check.
+    return s.visibility !== 'hidden' && s.display !== 'none' && s.opacity !== '0';
   };
   const checks = [
     { kind: 'recaptcha', sel: 'iframe[src*="recaptcha"], .g-recaptcha, #g-recaptcha-response' },
     { kind: 'hcaptcha', sel: 'iframe[src*="hcaptcha"], .h-captcha, [data-hcaptcha-widget-id]' },
     { kind: 'turnstile', sel: 'iframe[src*="challenges.cloudflare.com"], .cf-turnstile' },
     { kind: 'cloudflare', sel: '#challenge-form, #cf-challenge-running, #turnstile-wrapper' },
+    { kind: 'slider', sel: '.geetest_slider_button, .geetest_window, .geetest_radar_tip, [class*="geetest_slider"]' },
+    { kind: 'text', sel: 'iframe[id*="mtcaptcha"], iframe[src*="mtcaptcha"], img[src*="captcha"], img[alt*="captcha"], img[class*="captcha"], [class*="captcha"] img' },
   ];
   for (const c of checks) {
     const nodes = Array.from(document.querySelectorAll(c.sel));
-    if (nodes.length) return { present: true, kind: c.kind, visible: nodes.some(onScreen) };
+    if (nodes.length) return { present: true, kind: c.kind, visible: nodes.some(painted) };
   }
   // Cloudflare's interstitial sometimes only shows as body text before the widget mounts.
   const title = (document.title || '').toLowerCase();
@@ -184,6 +189,110 @@ export const CAPTCHA_SCAN_SCRIPT = `(() => {
     return { present: true, kind: 'cloudflare', visible: true };
   }
   return { present: false, kind: null, visible: false };
+})()`;
+
+/**
+ * Unclips overflow:hidden ancestors, scrolls the largest challenge widget into view, and
+ * nudges absolutely-positioned popovers back into the viewport. Returns the largest widget
+ * box so main can grow the window. Challenge iframes resize themselves (3×3 vs 4×4 grids);
+ * this script does not freeze their width/height.
+ */
+export const CAPTCHA_REVEAL_SCRIPT = `(() => {
+  const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+  const sels = [
+    'iframe[src*="recaptcha"][src*="bframe"]',
+    'iframe[title*="challenge" i]',
+    'iframe[src*="hcaptcha"]',
+    'iframe[src*="challenges.cloudflare.com"]',
+    '.geetest_window',
+    '.geetest_panel',
+    '.geetest_panel_box',
+    'iframe[src*="mtcaptcha"]',
+    'iframe[src*="recaptcha"]',
+    '.g-recaptcha',
+    '.h-captcha',
+    '.cf-turnstile'
+  ];
+  const seen = new Set();
+  const nodes = [];
+  for (const sel of sels) {
+    for (const el of document.querySelectorAll(sel)) {
+      if (seen.has(el)) continue;
+      seen.add(el);
+      nodes.push(el);
+    }
+  }
+  const unclip = (el) => {
+    let n = el.parentElement;
+    let hops = 0;
+    while (n && n !== document.documentElement && hops < 24) {
+      const s = getComputedStyle(n);
+      if (s.overflow === 'hidden' || s.overflowX === 'hidden' || s.overflowY === 'hidden') {
+        n.style.overflow = 'visible';
+        n.style.overflowX = 'visible';
+        n.style.overflowY = 'visible';
+      }
+      n = n.parentElement;
+      hops += 1;
+    }
+  };
+  const positionedParent = (el) => {
+    let n = el;
+    let hops = 0;
+    while (n && hops < 16) {
+      const s = getComputedStyle(n);
+      if (s.position === 'absolute' || s.position === 'fixed') return n;
+      n = n.parentElement;
+      hops += 1;
+    }
+    return el;
+  };
+  const fit = (el) => {
+    const r = el.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;
+    let dx = 0;
+    let dy = 0;
+    if (r.left < 8) dx = 8 - r.left;
+    else if (r.right > vw - 8) dx = vw - 8 - r.right;
+    if (r.top < 8) dy = 8 - r.top;
+    else if (r.bottom > vh - 8) dy = vh - 8 - r.bottom;
+    if (!dx && !dy) return;
+    const box = positionedParent(el);
+    const cs = getComputedStyle(box);
+    if (cs.position === 'absolute' || cs.position === 'fixed') {
+      const left = Number.parseFloat(cs.left);
+      const top = Number.parseFloat(cs.top);
+      if (Number.isFinite(left)) box.style.left = (left + dx) + 'px';
+      if (Number.isFinite(top)) box.style.top = (top + dy) + 'px';
+    } else {
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
+  };
+  let width = 0;
+  let height = 0;
+  for (const el of nodes) {
+    unclip(el);
+    const r = el.getBoundingClientRect();
+    if (r.width > width) width = r.width;
+    if (r.height > height) height = r.height;
+  }
+  nodes.sort((a, b) => {
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return (rb.width * rb.height) - (ra.width * ra.height);
+  });
+  const target = nodes[0];
+  if (target) {
+    try { target.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {}
+    fit(target);
+  }
+  return {
+    count: nodes.length,
+    width: Math.ceil(width),
+    height: Math.ceil(height),
+    viewport: { width: vw, height: vh }
+  };
 })()`;
 
 /**

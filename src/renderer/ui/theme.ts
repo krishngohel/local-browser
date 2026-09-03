@@ -26,3 +26,19 @@ export function reportChromeHeight(): void {
   const height = Math.round(shell.getBoundingClientRect().height);
   if (height > 0) void window.lb?.setChromeHeight(height);
 }
+
+let chromeObserved = false;
+
+/** Watch the shell so compact mode, DPI, and font changes keep the BrowserView flush. */
+export function watchChromeHeight(): void {
+  if (chromeObserved) return;
+  const shell = document.querySelector(".shell") as HTMLElement | null;
+  if (!shell || typeof ResizeObserver === "undefined") return;
+  chromeObserved = true;
+  const ro = new ResizeObserver(() => reportChromeHeight());
+  ro.observe(shell);
+  window.addEventListener("resize", () => reportChromeHeight());
+  const fonts = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+  if (fonts?.ready) void fonts.ready.then(() => reportChromeHeight());
+  requestAnimationFrame(() => reportChromeHeight());
+}

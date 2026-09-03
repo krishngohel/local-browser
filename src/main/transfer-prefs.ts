@@ -34,12 +34,17 @@ export const TOOL_GROUP_COUNTS = {
   toolsQa: 9,
 } as const;
 
-export function enabledToolCount(prefs: TransferPrefs = getTransferPrefs(), evaluateEnabled = false): number {
+export function enabledToolCount(
+  prefs: TransferPrefs = getTransferPrefs(),
+  evaluateEnabled = false,
+  captchaSolverOn = false,
+): number {
   let n = TOOL_GROUP_COUNTS.always;
   for (const key of Object.keys(TOOL_GROUP_COUNTS) as (keyof typeof TOOL_GROUP_COUNTS)[]) {
     if (key !== "always" && prefs[key]) n += TOOL_GROUP_COUNTS[key];
   }
   if (prefs.toolsInteract && evaluateEnabled) n += 1;
+  if (prefs.toolsRead && captchaSolverOn) n += 1;
   return n;
 }
 

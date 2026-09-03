@@ -209,6 +209,31 @@ export function initSettings(
     void window.lb.updateSettings({ showAssistantCursor: showAssistantCursor.checked });
   });
 
+  const captchaEnabled = document.getElementById("captcha-solver-enabled") as HTMLInputElement | null;
+  captchaEnabled?.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateCaptchaSolver({ enabled: captchaEnabled.checked });
+  });
+  const captchaProvider = document.getElementById("captcha-solver-provider") as HTMLSelectElement | null;
+  captchaProvider?.addEventListener("change", () => {
+    if (!window.lb) return;
+    const provider = currentCaptchaProvider();
+    void window.lb.updateCaptchaSolver({ provider }).then(() => {
+      if (latest) renderCaptchaSolver(latest);
+    });
+  });
+  document.getElementById("captcha-solver-key-save")?.addEventListener("click", () => void saveCaptchaKey());
+  document.getElementById("captcha-solver-key-clear")?.addEventListener("click", () => void clearCaptchaKey());
+  document.getElementById("captcha-solver-model-save")?.addEventListener("click", () => void saveCaptchaModel());
+  const captchaKey = document.getElementById("captcha-solver-key") as HTMLInputElement | null;
+  captchaKey?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void saveCaptchaKey();
+  });
+  const captchaModel = document.getElementById("captcha-solver-model") as HTMLInputElement | null;
+  captchaModel?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void saveCaptchaModel();
+  });
+
   const homeUrl = document.getElementById("home-url") as HTMLInputElement;
   document.getElementById("home-url-save")!.addEventListener("click", () => saveHomeUrl(homeUrl));
   homeUrl.addEventListener("keydown", (event) => {
@@ -335,6 +360,7 @@ export function renderSettings(next: AppState): void {
   const showAssistantCursor = document.getElementById("show-assistant-cursor") as HTMLInputElement | null;
   if (showAssistantCursor) showAssistantCursor.checked = next.settings.showAssistantCursor;
 
+  renderCaptchaSolver(next);
   renderRecorder(next);
   renderTools(next);
   renderActivity(next);
@@ -349,11 +375,14 @@ function sectionVisible(id: string): boolean {
   return !!node && !node.hidden && !settingsEl().hidden;
 }
 
-/** `evaluate` is the one tool a group switch does not decide on its own. */
+/** `evaluate` and `captcha_solve` each have a second switch of their own. */
 function toolIsOn(entry: ToolManifestEntry, next: AppState): boolean {
   if (entry.group === "always") return true;
   const groupOn = next.transfer[entry.group as keyof AppState["transfer"]] === true;
   if (entry.name === "evaluate") return groupOn && next.settings.evaluateEnabled;
+  if (entry.name === "captcha_solve") {
+    return groupOn && next.captchaSolver?.enabled === true && next.captchaSolver?.configured === true;
+  }
   return groupOn;
 }
 
@@ -364,7 +393,7 @@ function renderTools(next: AppState): void {
     void loadManifest();
     return;
   }
-  const key = `${JSON.stringify(next.transfer)}:${next.settings.evaluateEnabled}`;
+  const key = `${JSON.stringify(next.transfer)}:${next.settings.evaluateEnabled}:${next.captchaSolver?.enabled}:${next.captchaSolver?.configured}`;
   if (key === toolsKey) return;
   toolsKey = key;
 
@@ -521,6 +550,85 @@ function renderAppearance(next: AppState): void {
   const homeUrl = document.getElementById("home-url") as HTMLInputElement | null;
   // Never overwrite a URL half-typed.
   if (homeUrl && document.activeElement !== homeUrl) homeUrl.value = next.settings.homeUrl;
+}
+
+function currentCaptchaProvider(): "agent" | "openai" | "gemini" {
+  const select = document.getElementById("captcha-solver-provider") as HTMLSelectElement | null;
+  const value = select?.value;
+  if (value === "gemini" || value === "agent") return value;
+  return "openai";
+}
+
+function renderCaptchaSolver(next: AppState): void {
+  const pub = next.captchaSolver;
+  if (!pub) return;
+  const enabled = document.getElementById("captcha-solver-enabled") as HTMLInputElement | null;
+  if (enabled) enabled.checked = pub.enabled;
+  const provider = document.getElementById("captcha-solver-provider") as HTMLSelectElement | null;
+  if (provider && document.activeElement !== provider) provider.value = pub.provider;
+  const agent = pub.provider === "agent";
+  document.getElementById("captcha-solver-key-field")?.toggleAttribute("hidden", agent);
+  document.getElementById("captcha-solver-model-field")?.toggleAttribute("hidden", agent);
+  const model = document.getElementById("captcha-solver-model") as HTMLInputElement | null;
+  if (model && document.activeElement !== model) {
+    model.value = pub.provider === "gemini" ? pub.geminiModel : pub.openaiModel;
+    model.placeholder = pub.provider === "gemini" ? "gemini-2.5-pro" : "gpt-4o";
+  }
+  const key = document.getElementById("captcha-solver-key") as HTMLInputElement | null;
+  if (key && document.activeElement !== key) {
+    key.value = "";
+    key.placeholder = pub.configured ? "Key saved — paste a new one to replace" : "Paste a key to save";
+  }
+  const status = document.getElementById("captcha-solver-key-status");
+  if (status) {
+    if (agent) {
+      status.textContent = "Challenge images stay in this MCP session. No API key needed.";
+    } else {
+      status.textContent = pub.configured
+        ? `API key saved for ${pub.provider === "gemini" ? "Gemini" : "OpenAI"}.`
+        : "No API key saved.";
+    }
+  }
+}
+
+async function saveCaptchaKey(): Promise<void> {
+  const input = document.getElementById("captcha-solver-key") as HTMLInputElement | null;
+  const value = input?.value.trim() ?? "";
+  if (!value) {
+    toast("Paste an API key first", "error");
+    return;
+  }
+  if (!window.lb) return;
+  const provider = currentCaptchaProvider();
+  if (provider === "agent") return;
+  const patch = provider === "gemini" ? { geminiKey: value } : { openaiKey: value };
+  await window.lb.updateCaptchaSolver({ provider, ...patch });
+  if (input) input.value = "";
+  toast("API key saved", "ok");
+}
+
+async function clearCaptchaKey(): Promise<void> {
+  if (!window.lb) return;
+  const provider = currentCaptchaProvider();
+  if (provider === "agent") return;
+  const patch = provider === "gemini" ? { geminiKey: "" } : { openaiKey: "" };
+  await window.lb.updateCaptchaSolver(patch);
+  toast("API key removed", "ok");
+}
+
+async function saveCaptchaModel(): Promise<void> {
+  const input = document.getElementById("captcha-solver-model") as HTMLInputElement | null;
+  const value = input?.value.trim() ?? "";
+  if (!value) {
+    toast("Enter a model name", "error");
+    return;
+  }
+  if (!window.lb) return;
+  const provider = currentCaptchaProvider();
+  if (provider === "agent") return;
+  const patch = provider === "gemini" ? { geminiModel: value } : { openaiModel: value };
+  await window.lb.updateCaptchaSolver({ provider, ...patch });
+  toast("Model saved", "ok");
 }
 
 function saveHomeUrl(input: HTMLInputElement): void {

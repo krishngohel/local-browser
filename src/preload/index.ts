@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, CaptchaSolverPublic, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 contextBridge.exposeInMainWorld("lb", {
@@ -43,6 +43,15 @@ contextBridge.exposeInMainWorld("lb", {
   setSettings: (open: boolean) => ipcRenderer.invoke("settings:set", open),
   getSettings: (): Promise<AppSettings> => ipcRenderer.invoke("settings:get"),
   updateSettings: (next: Partial<AppSettings>): Promise<AppSettings> => ipcRenderer.invoke("settings:update", next),
+  getCaptchaSolver: (): Promise<CaptchaSolverPublic> => ipcRenderer.invoke("captcha:get"),
+  updateCaptchaSolver: (next: {
+    enabled?: boolean;
+    provider?: "agent" | "openai" | "gemini";
+    openaiKey?: string;
+    geminiKey?: string;
+    openaiModel?: string;
+    geminiModel?: string;
+  }): Promise<CaptchaSolverPublic> => ipcRenderer.invoke("captcha:set", next),
   getProfile: (): Promise<Profile> => ipcRenderer.invoke("profile:get"),
   updateProfile: (next: Partial<Profile>): Promise<Profile> => ipcRenderer.invoke("profile:update", next),
   applyUpdate: () => ipcRenderer.invoke("update:apply"),
@@ -64,6 +73,9 @@ contextBridge.exposeInMainWorld("lb", {
   },
   onCloseSettings: (cb: () => void) => {
     ipcRenderer.on("close-settings", cb);
+  },
+  onCloseOverlays: (cb: () => void) => {
+    ipcRenderer.on("close-overlays", cb);
   },
   onToggleBookmark: (cb: () => void) => {
     ipcRenderer.on("toggle-bookmark", cb);

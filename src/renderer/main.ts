@@ -1,6 +1,6 @@
 import type { AppSettings, AppState } from "../shared/types";
 import { el, svgIcon } from "./ui/dom";
-import { applyTheme, reportChromeHeight } from "./ui/theme";
+import { applyTheme, reportChromeHeight, watchChromeHeight } from "./ui/theme";
 import { renderTabs, hidePreview, invalidateTabs } from "./ui/tabs";
 import { initGrid, syncGrid } from "./ui/grid";
 import { initOmnibox, renderOmnibox, focusOmnibox, closeSuggestions } from "./ui/omnibox";
@@ -319,12 +319,14 @@ if (window.lb) {
   window.lb.onState(render);
   window.lb.onOpenSettings((section) => void openSettingsSection(section || "connections"));
   window.lb.onCloseSettings(() => hideSettings());
+  window.lb.onCloseOverlays(() => closeOverlays());
   window.lb.onFocusOmnibox(() => focusOmnibox());
   window.lb.onToggleBookmark(() => toggleBookmark());
   window.lb.onOpenPalette(() => openPalette());
   void window.lb.getState().then((next) => {
     render(next);
     reportChromeHeight();
+    watchChromeHeight();
     void fillSnippets();
   });
 } else {

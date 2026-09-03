@@ -1,4 +1,4 @@
-import { BrowserView, BrowserWindow, net, session, nativeImage, Notification, type Session } from "electron";
+import { BrowserView, BrowserWindow, net, session, nativeImage, Notification, screen, type Session } from "electron";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,6 +20,7 @@ import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
   CAPTCHA_SCAN_SCRIPT,
+  CAPTCHA_REVEAL_SCRIPT,
   PERF_TIMING_SCRIPT,
   dispatchKeyScript,
   fileInputKindScript,
@@ -40,6 +41,9 @@ import type { Downloads } from "./downloads";
 import type { History } from "./history";
 import type { TabInfo } from "../shared/types";
 import { pace } from "./pacing";
+import { captchaSolverReady } from "./captcha-solver-prefs";
+import { growContentForCaptcha, isCaptchaFrameUrl, pageViewBounds } from "./captcha-layout";
+import { solveCaptchaOnPage, type CaptchaJudgment, type CaptchaSolveResult } from "./captcha-solver";
 import { RateLimiter } from "./rate-limit";
 
 /** Shape returned by `CAPTCHA_SCAN_SCRIPT`. */
@@ -289,6 +293,10 @@ export class BrowserHub {
   private showAssistantCursor = true;
   /** Hosts already announced as challenged this session, so the notification fires once each. */
   private captchaNotified = new Set<string>();
+  /** Last time `prepareCaptchaView` ran per tab, so iframe-load bursts do not fight the layout. */
+  private captchaRevealAt = new Map<string, number>();
+  /** Largest challenge box already fitted per tab, so a 3×3 → 4×4 resize still grows. */
+  private captchaRevealNeed = new Map<string, { w: number; h: number }>();
 
   setRecorder(rec: Recorder): void {
     this.rec = rec;
@@ -329,8 +337,9 @@ export class BrowserHub {
   /**
    * Room for a renderer overlay — omnibox suggestions, the assistant popover, a tab preview.
    * The page view is a native layer above the chrome document, so those panels are invisible
-   * until the view slides out of the way. It slides rather than shrinks: the height stays
-   * constant, so no site reflows while a dropdown is open.
+   * until the view moves out of the way. The view both slides down and shrinks by the same
+   * amount so the bottom of the page (reCAPTCHA challenge iframes, fixed widgets) is not
+   * clipped by the window.
    */
   setOverlayHeight(px: number): void {
     const next = Math.max(0, Math.min(720, Math.round(px)));
@@ -358,6 +367,7 @@ export class BrowserHub {
     window.on("restore", relayout);
     window.on("enter-full-screen", relayout);
     window.on("leave-full-screen", relayout);
+    screen.on("display-metrics-changed", relayout);
     this.configureSession();
   }
 
@@ -706,6 +716,8 @@ export class BrowserHub {
     const partition = partitionName();
     const win = new BrowserWindow({
       show: false,
+      width: 1280,
+      height: 800,
       webPreferences: {
         partition,
         sandbox: true,
@@ -956,6 +968,8 @@ export class BrowserHub {
     this.appsSessionTabIds = this.appsSessionTabIds.filter((x) => x !== id);
     this.tabs.delete(id);
     this.thumbs.delete(id);
+    this.captchaRevealAt.delete(id);
+    this.captchaRevealNeed.delete(id);
     this.dialogHooked.delete(id);
     this.dialogs.forget(id);
     this.tabQueues.delete(id);
@@ -1145,18 +1159,21 @@ export class BrowserHub {
   }
 
   /**
-   * After a load, checks for a CAPTCHA / anti-bot interstitial. Echo does not solve these; it
-   * notifies the person at the machine (once per host) and returns a line telling the assistant
-   * to pause and hand off. Best-effort: a scan failure never fails the navigation.
+   * After a load, checks for a CAPTCHA / anti-bot interstitial. Notifies the person at the
+   * machine (once per host) and returns a line telling the assistant what to do. If the
+   * opt-in vision solver is configured, a visible puzzle can go to `captcha_solve`;
+   * invisible/score-based checks still hand off. Best-effort: a scan failure never fails
+   * the navigation.
    */
   private async noteCaptchaOnLoad(tab: Tab, landed: string): Promise<string> {
     let found: CaptchaScan | null = null;
     try {
-      found = (await this.exec(tab, CAPTCHA_SCAN_SCRIPT)) as CaptchaScan | null;
+      found = (await this.execMain(tab, CAPTCHA_SCAN_SCRIPT)) as CaptchaScan | null;
     } catch {
       return "";
     }
     if (!found?.present) return "";
+    if (found.visible) void this.prepareCaptchaView(tab, { force: true });
     const host = (() => {
       try {
         return new URL(landed).host;
@@ -1170,28 +1187,64 @@ export class BrowserHub {
         if (Notification.isSupported()) {
           new Notification({
             title: "Echo needs you: CAPTCHA",
-            body: `A ${found.kind ?? "bot"} challenge is on ${host}. Solve it in the Echo window to continue.`,
+            body: found.visible && captchaSolverReady()
+              ? `A ${found.kind ?? "bot"} challenge is on ${host}. The assistant can try captcha_solve, or you can finish it in the window.`
+              : `A ${found.kind ?? "bot"} challenge is on ${host}. Solve it in the Echo window to continue.`,
           }).show();
         }
       } catch {
         /* notifications are a nicety, never required */
       }
     }
-    return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Echo does not solve CAPTCHAs — pause and ask the user to complete it in the Echo window, then continue.`;
+    if (!found.visible) {
+      return `\n⚠ A ${found.kind ?? "bot"} challenge is present but invisible (score-based). Don't click the flagged action yourself — hover its ref and ask the user to click it.`;
+    }
+    if (captchaSolverReady()) {
+      return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Call captcha_solve. If that fails, ask the user to complete it in the Echo window. Invisible/score-based checks still cannot be solved.`;
+    }
+    return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Echo does not solve CAPTCHAs unless you enable the solver in Settings → System — pause and ask the user to complete it in the Echo window, then continue.`;
   }
 
-  /** On-demand CAPTCHA scan, for the `captcha_check` tool. */
+  /** On-demand CAPTCHA scan, for the `captcha_check` tool. Always the main frame — a selected iframe would miss the challenge popover Google injects on `document.body`. */
   private async detectCaptchaCore(tab: Tab): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
-    const found = (await this.exec(tab, CAPTCHA_SCAN_SCRIPT)) as {
+    const found = (await this.execMain(tab, CAPTCHA_SCAN_SCRIPT)) as {
       present: boolean;
       kind: string | null;
       visible: boolean;
     };
+    if (found?.present && found.visible) await this.prepareCaptchaView(tab, { force: true });
     return found;
   }
 
   async detectCaptcha(tabId?: string): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
     return this.withTab(tabId, (tab) => this.detectCaptchaCore(tab));
+  }
+
+  private async solveCaptchaCore(tab: Tab, judgment?: CaptchaJudgment): Promise<CaptchaSolveResult> {
+    if (!captchaSolverReady()) {
+      throw new Error(
+        "CAPTCHA solver is off. Enable it in Echo Settings → System (Connected assistant, or an OpenAI/Gemini API key).",
+      );
+    }
+    this.refuseDetachedCapture(tab, "solve a CAPTCHA on");
+    if (tab.id !== this.activeId && !tab.osr) this.attachTab(tab.id);
+    await this.revealForCapture();
+    await this.prepareCaptchaView(tab, { force: true });
+    await pace(this.humanPacing);
+    const page = await this.requirePlaywrightPage(tab);
+    if (!page) {
+      throw new Error("Playwright is not attached to this tab yet. Wait a moment and retry captcha_solve.");
+    }
+    const scan = await this.detectCaptchaCore(tab);
+    return solveCaptchaOnPage(page, scan, judgment);
+  }
+
+  /**
+   * Opt-in solver for a visible CAPTCHA. API providers auto-solve; Connected assistant
+   * returns challenge images for the MCP client to judge, then apply via `judgment`.
+   */
+  async solveCaptcha(tabId?: string, judgment?: CaptchaJudgment): Promise<CaptchaSolveResult> {
+    return this.withTab(tabId, (tab) => this.solveCaptchaCore(tab, judgment));
   }
 
   /** `navigate` for assistant-driven callers. The omnibox keeps the unrestricted path. */
@@ -1395,16 +1448,27 @@ export class BrowserHub {
       win.webContents.send("close-settings");
       this.setSettingsOpen(false);
     }
+    win.webContents.send("close-overlays");
+    this.overlayHeight = 0;
     const wasHidden = !win.isVisible() || win.isMinimized();
     if (win.isMinimized()) win.restore();
     if (!win.isVisible()) win.show();
     this.layout();
+    this.scheduleLayout();
     if (wasHidden) {
       win.focus();
       await sleep(120);
     } else {
       await sleep(30);
     }
+  }
+
+  /**
+   * Main-frame JavaScript, ignoring `frame_select`. CAPTCHA widgets and their challenge
+   * popovers live on the top document even when the assistant has focused an iframe.
+   */
+  private execMain(tab: Tab, js: string): Promise<unknown> {
+    return tab.view.webContents.executeJavaScript(js);
   }
 
   /**
@@ -2482,13 +2546,109 @@ export class BrowserHub {
     // that ever changes.
     if (!tab || tab.osr) return;
     const view = tab.view as BrowserView;
-    const { width, height } = this.window.getContentBounds();
+    const [width, height] = this.window.getContentSize();
     view.setAutoResize({ width: false, height: false, horizontal: false, vertical: false });
-    view.setBounds({
-      x: 0,
-      y: this.chromeHeight + this.overlayHeight,
-      width: Math.max(0, Math.round(width)),
-      height: Math.max(0, Math.round(height) - this.chromeHeight),
+    view.setBounds(pageViewBounds(width, height, this.chromeHeight, this.overlayHeight));
+  }
+
+  /** Relayout after Chromium has applied a size change (DPI, overlay close, captcha grow). */
+  private scheduleLayout(): void {
+    this.layout();
+    setTimeout(() => this.layout(), 0);
+    setTimeout(() => this.layout(), 50);
+    setTimeout(() => this.layout(), 200);
+  }
+
+  /**
+   * Reset zoom/emulation, unclip challenge iframes, and grow the window if the puzzle is
+   * larger than the page view. Called from captcha_check, captcha_solve, page-load notice,
+   * and when a challenge iframe reports a new size.
+   */
+  async prepareCaptchaView(
+    tab: Tab,
+    measured?: { widgetWidth?: number; widgetHeight?: number; force?: boolean },
+  ): Promise<void> {
+    const now = Date.now();
+    const last = this.captchaRevealAt.get(tab.id) ?? 0;
+    const incomingW = Math.max(0, Math.round(measured?.widgetWidth ?? 0));
+    const incomingH = Math.max(0, Math.round(measured?.widgetHeight ?? 0));
+    const prev = this.captchaRevealNeed.get(tab.id);
+    const bigger = !prev || incomingW > prev.w + 24 || incomingH > prev.h + 24;
+    if (!measured?.force && now - last < 350 && !bigger) return;
+    this.captchaRevealAt.set(tab.id, now);
+
+    const wc = tab.view.webContents;
+    try {
+      wc.setZoomFactor(1);
+    } catch {
+      /* zoom reset is best-effort so the challenge iframe is not scaled off-screen */
+    }
+    this.clearDeviceEmulation(wc);
+
+    let widgetWidth = Math.max(0, Math.round(measured?.widgetWidth ?? 0));
+    let widgetHeight = Math.max(0, Math.round(measured?.widgetHeight ?? 0));
+    try {
+      const revealed = (await this.execMain(tab, CAPTCHA_REVEAL_SCRIPT)) as {
+        width?: number;
+        height?: number;
+      } | null;
+      widgetWidth = Math.max(widgetWidth, Math.round(revealed?.width ?? 0));
+      widgetHeight = Math.max(widgetHeight, Math.round(revealed?.height ?? 0));
+    } catch {
+      /* page may not be ready; growing to the minimum view still helps */
+    }
+    this.captchaRevealNeed.set(tab.id, {
+      w: Math.max(prev?.w ?? 0, widgetWidth),
+      h: Math.max(prev?.h ?? 0, widgetHeight),
+    });
+
+    if (tab.osr) {
+      const win = tab.view as BrowserWindow;
+      const [contentWidth, contentHeight] = win.getContentSize();
+    const next = growContentForCaptcha({
+        contentWidth,
+        contentHeight,
+        chromeHeight: 0,
+        overlayHeight: 0,
+        widgetWidth,
+        widgetHeight,
+        maxContentWidth: 1920,
+        maxContentHeight: 1200,
+        ensureMinView: Boolean(measured?.force),
+      });
+      if (next.grew) win.setContentSize(next.width, next.height);
+      return;
+    }
+
+    const win = this.window;
+    if (!win || this.settingsOpen || this.gridOpen) return;
+    if (tab.id !== this.activeId) return;
+    const [contentWidth, contentHeight] = win.getContentSize();
+    const display = screen.getDisplayMatching(win.getBounds());
+    const locked = win.isMaximized() || win.isFullScreen();
+    const next = growContentForCaptcha({
+      contentWidth,
+      contentHeight,
+      chromeHeight: this.chromeHeight,
+      overlayHeight: this.overlayHeight,
+      widgetWidth,
+      widgetHeight,
+      maxContentWidth: display.workAreaSize.width,
+      maxContentHeight: Math.max(contentHeight, display.workAreaSize.height - 48),
+      locked,
+      ensureMinView: Boolean(measured?.force),
+    });
+    if (next.grew) win.setContentSize(next.width, next.height);
+    this.scheduleLayout();
+  }
+
+  /** Challenge iframe in a page reported a new size — grow/unclip if needed. */
+  onCaptchaFit(webContentsId: number, box: { width?: number; height?: number }): void {
+    const tab = this.tabForWebContents(webContentsId);
+    if (!tab) return;
+    void this.prepareCaptchaView(tab, {
+      widgetWidth: Number(box.width) || 0,
+      widgetHeight: Number(box.height) || 0,
     });
   }
 
@@ -2540,8 +2700,8 @@ export class BrowserHub {
     if (oldest !== undefined) this.faviconCache.delete(oldest);
   }
 
-  private clearDeviceEmulation(): void {
-    const wc = this.active()?.view.webContents as Electron.WebContents & {
+  private clearDeviceEmulation(target?: Electron.WebContents): void {
+    const wc = (target ?? this.active()?.view.webContents) as Electron.WebContents & {
       disableDeviceEmulation?: () => void;
     };
     wc?.disableDeviceEmulation?.();
@@ -2579,6 +2739,12 @@ export class BrowserHub {
     wc.on("did-stop-loading", () => {
       if (this.activeId === tab.id) void this.captureThumb(tab.id);
       this.onChange();
+    });
+    wc.on("did-frame-finish-load", (_event, isMainFrame) => {
+      if (isMainFrame) return;
+      const hit = wc.mainFrame.framesInSubtree.some((frame) => isCaptchaFrameUrl(frame.url || ""));
+      if (!hit) return;
+      void this.prepareCaptchaView(tab);
     });
     wc.on("console-message", (_e, level, message) => {
       if (level >= 2) {

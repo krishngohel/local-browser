@@ -4,8 +4,9 @@
  * The page is an Electron BrowserView layered *above* this document, so anything the chrome
  * draws below its own height — omnibox suggestions, the assistant popover, tab previews,
  * toasts — would be hidden behind the page. The fix is to reserve a strip: main slides the
- * page view down by the requested number of pixels (`lb.setOverlay`), uncovering that much
- * of this document. The view keeps its size, so no site reflows while a dropdown is open.
+ * page view down *and shrinks its height* by the requested number of pixels (`lb.setOverlay`),
+ * uncovering that much of this document without clipping the bottom of the page (CAPTCHA
+ * challenge iframes are often position:fixed near the checkbox).
  *
  * Several overlays can be open at once (a toast during a suggestion list), so the reserve is
  * the max of every claim rather than a sum.

@@ -20,7 +20,7 @@ For UI testing or building:
 3. `click` / `type` / `fill` using refs from that snapshot.
 4. `screenshot` after any static visual change (`fullPage: true` if the layout is taller than the window).
 5. `watch` after any interaction that should animate, or when you need to see if something is moving.
-6. `wait_for` after navigation. If a captcha or login appears in the photo, stop and ask the user to finish it in Echo.
+6. `wait_for` after navigation. If a visible captcha appears and `captcha_solve` is available, call it; otherwise stop and ask the user to finish captcha or login in Echo.
 
 If Echo was in the tray, screenshot/snapshot/watch bring the window forward so the page can be photographed.
 
@@ -30,11 +30,11 @@ If Echo was in the tray, screenshot/snapshot/watch bring the window forward so t
 2. `snapshot` before every interaction. Click/type using refs (`e0`, `e1`, …). Do not guess selectors.
 3. `wait_for` after navigation or clicks that change the page.
 4. `extract_readable` when you need article text. `screenshot` when you need a dedicated still. `watch` when motion or animation matters.
-5. Stop on captcha, login wall, or 2FA. Tell the user to finish it in the Echo window, then `wait_for`.
+5. Stop on login wall or 2FA. Tell the user to finish it in the Echo window, then `wait_for`. For a visible captcha, call `captcha_solve` if that tool is available; otherwise ask the user.
 
 ## Search
 
-Use `search_web` (Google in the Chrome-compatible tab). If a captcha or consent screen appears, ask the user to complete it in the window, then `wait_for`.
+Use `search_web` (Google in the Chrome-compatible tab). If a captcha or consent screen appears, call `captcha_solve` if available, otherwise ask the user to complete it in the window, then `wait_for`.
 
 Bare words in `navigate` also search.
 

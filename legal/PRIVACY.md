@@ -25,6 +25,7 @@ When you visit a website or search Google, **that site** (and its ads, analytics
 If you click **Connect** for Cursor or Claude Desktop, or paste an MCP snippet into another assistant, those apps can drive this browser. While connected, they can see page content, screenshots, and anything you are signed in to here. Their privacy policies apply to how they handle that data.
 
 - If you turn on **Sessions and state**, an assistant can read the cookies and storage for sites you are signed in to, including sign-in tokens, and clear that data.
+- If you turn on **CAPTCHA solver** in Settings → System, pictures (and, for audio challenges, the audio) of visible CAPTCHA widgets are sent either to the connected MCP client (**Connected assistant**) or to OpenAI / Google if you saved that provider's API key. Keys stay in the App’s local data folder (`captcha-solver.json`) and are not shown to connected assistants. Turn the solver off, or remove the key, to stop those requests.
 
 ## What we do not collect
 

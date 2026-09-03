@@ -278,8 +278,8 @@
             <div class="card">
               <div>
                 <h3>Read and data</h3>
-                <p class="meta">8 tools: get_text, find, links, tables, forms, page_info, html, pdf_text.</p>
-                <p class="tokens">On uses 8 slots. Text only, no photos.</p>
+                <p class="meta">9 tools: get_text, find, links, tables, forms, page_info, html, pdf_text, captcha_check. captcha_solve is extra when the solver is on in System.</p>
+                <p class="tokens">On uses 9 slots, or 10 with the CAPTCHA solver allowed in System.</p>
               </div>
               <label class="switch"><input type="checkbox" data-transfer="toolsRead" /><span></span></label>
             </div>
@@ -480,6 +480,55 @@
                 <p class="meta">Shows a small cursor moving to what the assistant clicks or types into, so you can see what it's doing.</p>
               </div>
               <label class="switch"><input type="checkbox" id="show-assistant-cursor" /><span></span></label>
+            </div>
+            <div class="card stack">
+              <div class="card-head">
+                <div>
+                  <h3>CAPTCHA solver</h3>
+                  <p class="meta">Optional. Off by default. <strong>Connected assistant</strong> sends challenge pictures to the AI already driving Echo (it looks at them, then calls <code>captcha_solve</code> again). OpenAI or Gemini send those pictures to that provider with your API key. Invisible score-based checks still need you to click. Only use this on sites you are allowed to automate.</p>
+                </div>
+                <label class="switch"><input type="checkbox" id="captcha-solver-enabled" /><span></span></label>
+              </div>
+              <div class="profile-field">
+                <label for="captcha-solver-provider">Provider</label>
+                <select class="text-input" id="captcha-solver-provider" aria-label="CAPTCHA solver provider">
+                  <option value="agent">Connected assistant</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+              </div>
+              <div class="profile-field" id="captcha-solver-key-field">
+                <label for="captcha-solver-key">API key</label>
+                <div class="field">
+                  <input
+                    class="text-input"
+                    id="captcha-solver-key"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="Paste a key to save"
+                    aria-label="CAPTCHA solver API key"
+                  />
+                  <button class="chrome-btn" type="button" id="captcha-solver-key-save">Save</button>
+                  <button class="chrome-btn" type="button" id="captcha-solver-key-clear">Remove</button>
+                </div>
+                <p class="meta" id="captcha-solver-key-status">No API key saved.</p>
+              </div>
+              <div class="profile-field" id="captcha-solver-model-field">
+                <label for="captcha-solver-model">Model</label>
+                <div class="field">
+                  <input
+                    class="text-input"
+                    id="captcha-solver-model"
+                    type="text"
+                    spellcheck="false"
+                    autocomplete="off"
+                    placeholder="gpt-4o"
+                    aria-label="CAPTCHA solver model"
+                  />
+                  <button class="chrome-btn" type="button" id="captcha-solver-model-save">Save</button>
+                </div>
+              </div>
             </div>
             <div class="card">
               <div>

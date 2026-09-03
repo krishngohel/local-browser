@@ -103,6 +103,18 @@ export type AppSettings = {
 };
 
 /**
+ * Public CAPTCHA-solver status. Keys live in `userData/captcha-solver.json` and are never
+ * copied here — this is what the renderer and MCP clients are allowed to see.
+ */
+export type CaptchaSolverPublic = {
+  enabled: boolean;
+  configured: boolean;
+  provider: "agent" | "openai" | "gemini";
+  openaiModel: string;
+  geminiModel: string;
+};
+
+/**
  * Stable applicant identity fields, reused by fill_form (and future auto-fill) across job
  * applications. Resumes/cover letters are NOT stored here — those stay on upload_file.
  */
@@ -182,6 +194,7 @@ export type AppState = {
   toolCount: number;
   activity: ActivityState;
   settings: AppSettings;
+  captchaSolver: CaptchaSolverPublic;
   /** Kept in the broadcast state (like `settings`) so an assistant's profile_set while
    *  Settings → Profile is open reaches the open panel the same way any other live edit does,
    *  instead of the panel serving stale fields that a later Save would revert. */

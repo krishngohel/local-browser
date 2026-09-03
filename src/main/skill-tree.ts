@@ -9,7 +9,7 @@ You are connected to Echo, a local Chrome-compatible desktop browser on THIS com
 
 If tools named navigate, snapshot, screenshot, watch, search_web exist, use them. Do not invent CSS selectors. Do not ask for evaluate / arbitrary JavaScript.
 
-Always: snapshot before click/type/fill. Use refs like e0, e1. Filling several fields at once (e.g. a job application)? Use fill_form with { ref, value } pairs instead of separate fill/select/click calls. snapshot/screenshot return a photo of the page. watch returns a short live feed for animations. Stop on captcha/login/2FA and ask the user to finish it in the Echo window, then wait_for. Before a submit-style click, call captcha_check: if present but not visible (a score-based check, not a puzzle), don't click it yourself — hover its ref and ask the user to click it instead.
+Always: snapshot before click/type/fill. Use refs like e0, e1. Filling several fields at once (e.g. a job application)? Use fill_form with { ref, value } pairs instead of separate fill/select/click calls. snapshot/screenshot return a photo of the page. watch returns a short live feed for animations. Stop on login/2FA and ask the user to finish it in the Echo window, then wait_for. For a visible CAPTCHA, call captcha_solve if that tool is available; otherwise ask the user. Before a submit-style click, call captcha_check: if present but not visible (a score-based check, not a puzzle), don't click it yourself — hover its ref and ask the user to click it instead.
 
 Applying to jobs? profile_get/profile_set store the applicant's name, email, phone, address, and links once so fill_form (and profile_suggest_fill) can reuse them across applications instead of asking the user to retype them each time.
 
@@ -62,7 +62,7 @@ export function mcpInstructions(): string {
     "Echo is a local Chrome-compatible desktop browser on THIS computer. Drive it with these tools.",
     "Do not invent CSS selectors. Do not ask for evaluate / arbitrary JavaScript (not exposed).",
     "snapshot before click/type/fill using refs (e0, e1). Call echo_help or read echo://docs/skill-tree if you need the full guide.",
-    "Stop on captcha/login/2FA and ask the user to finish it in the Echo window, then wait_for.",
+    "Stop on login/2FA and ask the user to finish it in the Echo window, then wait_for. For a visible CAPTCHA, call captcha_solve if available; otherwise ask the user.",
     "Before a submit-style click, call captcha_check: if present but not visible (score-based, not a puzzle), don't click it yourself — hover its ref and ask the user to click it.",
   ].join("\n");
   if (!getTransferPrefs().skillTreeOnConnect) return compact;

@@ -12,6 +12,7 @@ import type { Scheduler } from "../../main/scheduler";
 import type { AppSettings, TransferPrefs } from "../../shared/types";
 import { GROUP_LABELS, TOOL_MANIFEST, type ToolGroup } from "../../shared/tool-manifest";
 import { getTransferPrefs } from "../../main/transfer-prefs";
+import { captchaSolverReady } from "../../main/captcha-solver-prefs";
 
 export type ToolContent =
   | { type: "text"; text: string }
@@ -70,25 +71,33 @@ type SessionTools = { deps: ToolDeps; tools: Map<string, { tool: RegisteredToolC
  */
 const liveSessions = new Map<McpServer, SessionTools>();
 
-function wantEnabled(name: string, group: ToolGroup, prefs: TransferPrefs, evaluateEnabled: boolean): boolean {
+function wantEnabled(
+  name: string,
+  group: ToolGroup,
+  prefs: TransferPrefs,
+  evaluateEnabled: boolean,
+  solverReady: boolean,
+): boolean {
   if (group === "always") return true;
   if (!prefs[group as keyof TransferPrefs]) return false;
   if (name === "evaluate") return evaluateEnabled;
+  if (name === "captcha_solve") return solverReady;
   return true;
 }
 
 /**
- * Re-applies the current Transfers switches (and the evaluate switch) to every connected
- * session. The SDK sends `notifications/tools/list_changed` on each state flip, so an
- * assistant that supports it sees tools appear and disappear without reconnecting. Called
- * from the settings IPC handlers whenever either store changes.
+ * Re-applies the current Transfers switches (and the evaluate / captcha_solve switches) to
+ * every connected session. The SDK sends `notifications/tools/list_changed` on each state
+ * flip, so an assistant that supports it sees tools appear and disappear without
+ * reconnecting. Called from the settings IPC handlers whenever either store changes.
  */
 export function refreshToolAvailability(): void {
   const prefs = getTransferPrefs();
+  const solverReady = captchaSolverReady();
   for (const entry of liveSessions.values()) {
     const evaluateEnabled = entry.deps.settings().evaluateEnabled;
     for (const [name, { tool, group }] of entry.tools) {
-      const want = wantEnabled(name, group, prefs, evaluateEnabled);
+      const want = wantEnabled(name, group, prefs, evaluateEnabled, solverReady);
       if (tool.enabled === want) continue;
       if (want) tool.enable();
       else tool.disable();
@@ -130,6 +139,11 @@ export function define<S extends ZodRawShape>(
               "evaluate is turned off in Echo Settings → Transfers (Allow evaluate). Turn it back on and retry.",
             );
           }
+          if (name === "captcha_solve" && !captchaSolverReady()) {
+            return err(
+              "captcha_solve is off. Enable the CAPTCHA solver in Echo Settings → System (Connected assistant, or an OpenAI/Gemini API key), then retry.",
+            );
+          }
           return handler(args);
         };
   // The refusal goes through the activity log too, so a user watching the pill sees the call
@@ -144,7 +158,7 @@ export function define<S extends ZodRawShape>(
   // Unit tests register against a bare fake whose `tool()` returns nothing; only a real SDK
   // registration is tracked for live switching.
   if (!registered || typeof registered.disable !== "function") return;
-  if (!wantEnabled(name, group, deps.prefs, deps.settings().evaluateEnabled)) registered.disable();
+  if (!wantEnabled(name, group, deps.prefs, deps.settings().evaluateEnabled, captchaSolverReady())) registered.disable();
   let entry = liveSessions.get(server);
   if (!entry) {
     entry = { deps, tools: new Map() };

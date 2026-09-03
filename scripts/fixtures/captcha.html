@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Echo captcha fixture</title>
+  </head>
+  <body>
+    <h1>CAPTCHA fixture</h1>
+    <p>Visible reCAPTCHA-shaped widget for captcha_check detection tests.</p>
+    <!-- Mimics the selectors CAPTCHA_SCAN_SCRIPT looks for; not a real Google challenge. -->
+    <div class="g-recaptcha" id="g-recaptcha-response" style="width: 304px; height: 78px; border: 1px solid #ccc;">
+      <iframe
+        title="reCAPTCHA"
+        src="about:blank"
+        width="304"
+        height="78"
+        style="border: 0"
+      ></iframe>
+    </div>
+  </body>
+</html>

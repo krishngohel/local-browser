@@ -21,9 +21,10 @@ function cssPath(el: Element): string {
       parts.unshift("#" + CSS.escape(node.id));
       break;
     }
-    const parent = node.parentElement;
+    const parent: Element | null = node.parentElement;
     if (parent) {
-      const same = Array.from(parent.children).filter((c) => c.tagName === node.tagName);
+      const tagName = node.tagName;
+      const same = Array.from(parent.children).filter((c) => (c as Element).tagName === tagName);
       if (same.length > 1) part += `:nth-of-type(${same.indexOf(node) + 1})`;
     }
     parts.unshift(part);
@@ -127,6 +128,58 @@ window.addEventListener(
 );
 
 window.addEventListener("blur", () => flushType(false), true);
+
+// --- CAPTCHA widget fit ----------------------------------------------------------------
+//
+// Challenge iframes (reCAPTCHA bframe, hCaptcha, GeeTest) inject themselves and then
+// resize — 3×3 vs 4×4 grids, audio vs images. The BrowserView does not auto-grow, so the
+// page preload watches those nodes and tells main the box so the window can be unclipped
+// and, if needed, enlarged.
+
+const CAPTCHA_FIT_SEL =
+  'iframe[src*="recaptcha"], iframe[src*="hcaptcha"], iframe[src*="challenges.cloudflare.com"], iframe[src*="mtcaptcha"], iframe[src*="geetest"], .geetest_window, .geetest_panel, .geetest_panel_box';
+
+function installCaptchaFitWatch(): void {
+  const watching = new WeakSet<Element>();
+  let lastKey = "";
+  let lastAt = 0;
+  const notify = (el: Element): void => {
+    const r = el.getBoundingClientRect();
+    const width = Math.ceil(r.width);
+    const height = Math.ceil(r.height);
+    if (width < 60 && height < 60) return;
+    const key = `${width}x${height}`;
+    const now = Date.now();
+    if (key === lastKey && now - lastAt < 200) return;
+    lastKey = key;
+    lastAt = now;
+    ipcRenderer.send("echo:captcha-fit", { width, height });
+  };
+  const scan = (): void => {
+    for (const el of document.querySelectorAll(CAPTCHA_FIT_SEL)) {
+      if (watching.has(el)) continue;
+      watching.add(el);
+      notify(el);
+      try {
+        new ResizeObserver(() => notify(el)).observe(el);
+      } catch {
+        /* ResizeObserver missing — MutationObserver still picks up new iframes */
+      }
+    }
+  };
+  const start = (): void => {
+    scan();
+    try {
+      new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true });
+    } catch {
+      /* ignore */
+    }
+  };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
+  else start();
+}
+
+installCaptchaFitWatch();
 
 // --- Web vitals -------------------------------------------------------------------------
 //

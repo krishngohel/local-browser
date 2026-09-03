@@ -1,4 +1,4 @@
-import type { AppSettings, AppState, BookmarkInfo, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
+import type { AppSettings, AppState, BookmarkInfo, CaptchaSolverPublic, ConnectResult, ConnectSnippets, GridFrame, HistoryEntry, PlayResult, Profile, RecordingFile, RecordingState, TransferPrefs } from "../shared/types";
 import type { ToolManifestEntry } from "../shared/tool-manifest";
 
 declare global {
@@ -44,6 +44,15 @@ declare global {
       setSettings: (open: boolean) => Promise<void>;
       getSettings: () => Promise<AppSettings>;
       updateSettings: (next: Partial<AppSettings>) => Promise<AppSettings>;
+      getCaptchaSolver: () => Promise<CaptchaSolverPublic>;
+      updateCaptchaSolver: (next: {
+        enabled?: boolean;
+        provider?: "agent" | "openai" | "gemini";
+        openaiKey?: string;
+        geminiKey?: string;
+        openaiModel?: string;
+        geminiModel?: string;
+      }) => Promise<CaptchaSolverPublic>;
       getProfile: () => Promise<Profile>;
       updateProfile: (next: Partial<Profile>) => Promise<Profile>;
       applyUpdate: () => Promise<void>;
@@ -56,6 +65,7 @@ declare global {
       onOpenSettings: (cb: (section?: string) => void) => void;
       onFocusOmnibox: (cb: () => void) => void;
       onCloseSettings: (cb: () => void) => void;
+      onCloseOverlays: (cb: () => void) => void;
       onToggleBookmark: (cb: () => void) => void;
       onOpenPalette: (cb: () => void) => void;
       onGridFrame: (cb: (frame: GridFrame) => void) => () => void;

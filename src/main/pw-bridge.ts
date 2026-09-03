@@ -6,11 +6,17 @@ export type PwLocator = {
   hover: (opts?: { timeout?: number }) => Promise<void>;
   fill: (value: string) => Promise<void>;
   press: (key: string) => Promise<void>;
-  selectOption: (value: string) => Promise<void>;
+  selectOption: (value: string, opts?: { timeout?: number }) => Promise<void>;
   dragTo: (target: PwLocator, opts?: { timeout?: number }) => Promise<void>;
   boundingBox: (opts?: { timeout?: number }) => Promise<PwBoundingBox | null>;
   setInputFiles: (files: string[], opts?: { timeout?: number }) => Promise<void>;
   first: () => PwLocator;
+  nth: (index: number) => PwLocator;
+  count: () => Promise<number>;
+  screenshot: (opts?: { type?: "png" | "jpeg"; timeout?: number }) => Promise<Buffer>;
+  innerText: () => Promise<string>;
+  isVisible: () => Promise<boolean>;
+  getAttribute: (name: string) => Promise<string | null>;
 };
 
 /** Anything locators can be built from — a page, or one of its frames. */

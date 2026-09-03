@@ -24,6 +24,7 @@ import { TestRunner } from "./test-runs";
 import { Recorder } from "./recordings";
 import { Scheduler } from "./scheduler";
 import type { AppSettings, AppState, PlayResult, Profile, RecordedAction, TransferPrefs } from "../shared/types";
+import { captchaSolverReady, publicCaptchaSolverStatus, setCaptchaSolverPrefs, type CaptchaSolverPatch } from "./captcha-solver-prefs";
 import { applyChromeCommandLine } from "./chrome-compat";
 import { getTransferPrefs, setTransferPrefs, enabledToolCount } from "./transfer-prefs";
 import { getSettings, setSettings } from "./settings";
@@ -114,9 +115,10 @@ function getState(): AppState {
     version: app.getVersion(),
     transfer: getTransferPrefs(),
     platform: process.platform,
-    toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled),
+    toolCount: enabledToolCount(getTransferPrefs(), getSettings().evaluateEnabled, captchaSolverReady()),
     activity: activity.state(),
     settings: getSettings(),
+    captchaSolver: publicCaptchaSolverStatus(),
     profile: getProfile(),
     bookmarks: { count: bookmarks.list().length, activeBookmarked: bookmarks.has(hub.activeUrl()) },
     updateStatus: updateStatus(),
@@ -219,7 +221,7 @@ function createWindow(): void {
     width: 1280,
     height: 840,
     minWidth: 900,
-    minHeight: 600,
+    minHeight: 680,
     backgroundColor: "#dee1e6",
     title: "Echo",
     icon: iconPath(),
@@ -441,6 +443,13 @@ function registerIpc(): void {
     broadcast();
     return s;
   });
+  ipcMain.handle("captcha:get", () => publicCaptchaSolverStatus());
+  ipcMain.handle("captcha:set", (_e, next: CaptchaSolverPatch) => {
+    const prefs = setCaptchaSolverPrefs(next ?? {});
+    refreshToolAvailability();
+    broadcast();
+    return publicCaptchaSolverStatus();
+  });
   ipcMain.handle("profile:get", () => getProfile());
   ipcMain.handle("profile:update", (_e, next: Partial<Profile>) => setProfile(next));
   ipcMain.handle("update:apply", () => {
@@ -563,6 +572,10 @@ function registerIpc(): void {
       String(payload?.type ?? "dialog"),
       String(payload?.message ?? ""),
     );
+  });
+  ipcMain.on("echo:captcha-fit", (event, box: { width?: number; height?: number }) => {
+    if (event.sender === mainWindow?.webContents) return;
+    hub.onCaptchaFit(event.sender.id, box ?? {});
   });
   ipcMain.on("echo:page-event", (event, payload: RecordedAction) => {
     if (event.sender === mainWindow?.webContents) return;

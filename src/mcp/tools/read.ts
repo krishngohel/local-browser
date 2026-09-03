@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { define, err, text, type ToolDeps } from "./_helpers";
+import { captchaSolverReady } from "../../main/captcha-solver-prefs";
+import { define, err, text, type ToolDeps, type ToolResult } from "./_helpers";
 
 export function registerRead(server: McpServer, deps: ToolDeps): void {
   const hub = deps.hub;
@@ -171,23 +172,57 @@ export function registerRead(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "captcha_check",
-    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. Echo does not solve these. If visible, ask the user to solve it in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list).",
+    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. If a visible puzzle is present and captcha_solve is available, call it. If it is missing or fails, ask the user to solve the puzzle in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list).",
     { tabId: z.string().optional() },
     async ({ tabId }) => {
       try {
         const found = await hub.detectCaptcha(tabId);
         if (!found.present) return text(JSON.stringify({ present: false }));
-        const action = found.visible
-          ? "Ask the user to solve it in the Echo window, then continue. Echo does not solve CAPTCHAs."
-          : "This is invisible/score-based, not a puzzle to solve. Don't click the flagged action yourself — call hover on its ref so the cursor points at it, ask the user to click it, then wait_for the result.";
+        const solverOn = captchaSolverReady();
+        const action = !found.visible
+          ? "This is invisible/score-based, not a puzzle to solve. Don't click the flagged action yourself — call hover on its ref so the cursor points at it, ask the user to click it, then wait_for the result."
+          : solverOn
+            ? "Call captcha_solve. If Settings uses Connected assistant, look at the images it returns and call captcha_solve again with tiles, text, or offsetPx. If it fails or the client refuses, ask the user to solve it in the Echo window."
+            : "Ask the user to solve it in the Echo window, then continue. captcha_solve is off until the user enables the solver in Settings → System.";
         return text(
           JSON.stringify({
             present: true,
             kind: found.kind,
             visible: found.visible,
+            solver: solverOn ? "ready" : "off",
             action,
           }),
         );
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  define(
+    server,
+    deps,
+    "captcha_solve",
+    "Attempt to solve a visible CAPTCHA. Settings → System chooses Connected assistant (this model looks at challenge images Echo returns, then call captcha_solve again with tiles, text, or offsetPx) or OpenAI/Gemini with an API key. Supports text CAPTCHAs, reCAPTCHA v2 image grids, and slider puzzles. Score-based invisible checks cannot be solved. Requires the user to enable the solver. Optionally target a specific tabId (see tabs_list).",
+    {
+      tabId: z.string().optional(),
+      challengeId: z.string().optional(),
+      tiles: z.array(z.number().int().min(0).max(24)).optional(),
+      text: z.string().max(200).optional(),
+      offsetPx: z.number().int().min(-260).max(260).optional(),
+      skip: z.boolean().optional(),
+    },
+    async ({ tabId, challengeId, tiles, text: answer, offsetPx, skip }) => {
+      try {
+        const result = await hub.solveCaptcha(tabId, { challengeId, tiles, text: answer, offsetPx, skip });
+        const images = result.images ?? [];
+        const { images: _omit, ...rest } = result;
+        void _omit;
+        const parts: ToolResult["content"] = [{ type: "text", text: JSON.stringify(rest) }];
+        for (const png of images.slice(0, 17)) {
+          parts.push({ type: "image", mimeType: "image/png", data: png.toString("base64") });
+        }
+        return { content: parts };
       } catch (e) {
         return err(e);
       }
