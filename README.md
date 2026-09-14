@@ -124,7 +124,7 @@ Tools are grouped. Each group is a switch in **Settings → Tools** (the same sw
 
 Two of those groups reach past the page: Interaction depth includes uploading any local file the assistant names or writes itself, and Sessions and state exposes every cookie and storage value in this profile, including sign-in tokens, plus the applicant profile you save for job applications.
 
-That adds up to **41 tools on a fresh install** and **75 with every group on**. Two more tools need their own switches: `evaluate` (run JavaScript in the page; Interaction depth plus Settings → Transfers) and `captcha_solve` (vision solver; Read and data plus Settings → System — Connected assistant, or an OpenAI/Gemini API key). With both on, the total is **77**.
+That adds up to **41 tools on a fresh install** and **75 with every group on**. Two more tools need their own switches: `evaluate` (run JavaScript in the page; Interaction depth plus Settings → Transfers) and `captcha_solve` (opt-in solver; Read and data plus Settings → System — CapSolver token service, Connected assistant, or an OpenAI/Gemini API key). With both on, the total is **77**.
 
 **Reconnect the AI client after changing groups.** MCP clients read the tool list once, at startup.
 
@@ -304,7 +304,7 @@ Installers are **unsigned** until an code-signing certificate is added. Use the 
 
 ### Google shows captcha or consent
 
-Complete it in the Echo window, or turn on **Settings → System → CAPTCHA solver**. Choose **Connected assistant** (the connected AI looks at challenge images Echo returns) or paste your own OpenAI or Gemini key. Invisible score-based checks still need you to click. Ask the assistant to wait (`wait_for`) and retry.
+Complete it in the Echo window, or turn on **Settings → System → CAPTCHA solver**. Choose **CapSolver** (paste your own CapSolver key — a paid token service that clears reCAPTCHA, hCaptcha, and Cloudflare Turnstile, including invisible score-based checks, automatically), **Connected assistant** (the connected AI looks at challenge images Echo returns), or paste your own OpenAI or Gemini key for image/slider puzzles. With **Auto-solve when detected** on (the default for a configured non-assistant provider), Echo attempts the solve the moment a challenge appears — no tool call needed; the assistant just waits (`wait_for`) and re-checks. Only use this on sites you are allowed to automate.
 
 ### Another device on Wi-Fi cannot connect
 

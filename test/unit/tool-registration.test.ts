@@ -178,6 +178,12 @@ test("refreshToolAvailability enables captcha_solve when a key is saved", () => 
     setCaptchaSolverPrefs({ enabled: true, provider: "openai", openaiKey: "" });
     refreshToolAvailability();
     assert.equal(solve!.tool.enabled, false, "OpenAI provider stays off without a key");
+    setCaptchaSolverPrefs({ enabled: true, provider: "capsolver", capsolverKey: "CAP-test" });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, true, "captcha_solve comes on for CapSolver with a key");
+    setCaptchaSolverPrefs({ provider: "capsolver", capsolverKey: "" });
+    refreshToolAvailability();
+    assert.equal(solve!.tool.enabled, false, "CapSolver provider stays off without a key");
   } finally {
     setTransferPrefsDir(null);
     setCaptchaSolverPrefsDir(null);

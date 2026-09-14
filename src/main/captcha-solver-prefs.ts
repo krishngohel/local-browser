@@ -2,11 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import type { CaptchaSolverPublic } from "../shared/types";
 
-export type CaptchaSolverProvider = "agent" | "openai" | "gemini";
+export type CaptchaSolverProvider = "agent" | "capsolver" | "openai" | "gemini";
 
 export type CaptchaSolverPrefs = {
   enabled: boolean;
   provider: CaptchaSolverProvider;
+  /** Auto-attempt a solve as soon as a challenge is detected (non-agent providers only). */
+  autoSolve: boolean;
+  capsolverKey: string;
   openaiKey: string;
   geminiKey: string;
   openaiModel: string;
@@ -16,6 +19,8 @@ export type CaptchaSolverPrefs = {
 export type CaptchaSolverPatch = {
   enabled?: boolean;
   provider?: CaptchaSolverProvider;
+  autoSolve?: boolean;
+  capsolverKey?: string;
   openaiKey?: string;
   geminiKey?: string;
   openaiModel?: string;
@@ -25,6 +30,8 @@ export type CaptchaSolverPatch = {
 export const DEFAULT_CAPTCHA_SOLVER_PREFS: CaptchaSolverPrefs = {
   enabled: false,
   provider: "agent",
+  autoSolve: true,
+  capsolverKey: "",
   openaiKey: "",
   geminiKey: "",
   openaiModel: "gpt-4o",
@@ -69,10 +76,17 @@ export function sanitizeCaptchaSolverPrefs(
 ): CaptchaSolverPrefs {
   const s = raw ?? {};
   const provider: CaptchaSolverProvider =
-    s.provider === "gemini" || s.provider === "openai" || s.provider === "agent" ? s.provider : fallback.provider;
+    s.provider === "gemini" ||
+    s.provider === "openai" ||
+    s.provider === "agent" ||
+    s.provider === "capsolver"
+      ? s.provider
+      : fallback.provider;
   return {
     enabled: typeof s.enabled === "boolean" ? s.enabled : fallback.enabled,
     provider,
+    autoSolve: typeof s.autoSolve === "boolean" ? s.autoSolve : fallback.autoSolve,
+    capsolverKey: clampKey(s.capsolverKey, fallback.capsolverKey),
     openaiKey: clampKey(s.openaiKey, fallback.openaiKey),
     geminiKey: clampKey(s.geminiKey, fallback.geminiKey),
     openaiModel: clampModel(s.openaiModel, fallback.openaiModel),
@@ -109,11 +123,37 @@ export function setCaptchaSolverPrefs(next: CaptchaSolverPatch): CaptchaSolverPr
 export function currentCaptchaKey(prefs: CaptchaSolverPrefs = getCaptchaSolverPrefs()): string {
   if (prefs.provider === "gemini") return prefs.geminiKey;
   if (prefs.provider === "openai") return prefs.openaiKey;
+  if (prefs.provider === "capsolver") return prefs.capsolverKey;
   return "";
 }
 
 export function currentCaptchaModel(prefs: CaptchaSolverPrefs = getCaptchaSolverPrefs()): string {
   return prefs.provider === "gemini" ? prefs.geminiModel : prefs.openaiModel;
+}
+
+export type VisionCreds = { provider: "openai" | "gemini"; key: string; model: string };
+
+/**
+ * Which OpenAI/Gemini key the vision solver should use. When the selected provider is a
+ * vision provider we use its own key; when it is CapSolver or the connected assistant we
+ * still allow vision as a *fallback* if any vision key happens to be saved. Returns null
+ * when no usable vision key exists.
+ */
+export function resolveVisionCreds(prefs: CaptchaSolverPrefs = getCaptchaSolverPrefs()): VisionCreds | null {
+  if (prefs.provider === "gemini" && prefs.geminiKey) {
+    return { provider: "gemini", key: prefs.geminiKey, model: prefs.geminiModel };
+  }
+  if (prefs.provider === "openai" && prefs.openaiKey) {
+    return { provider: "openai", key: prefs.openaiKey, model: prefs.openaiModel };
+  }
+  if (prefs.openaiKey) return { provider: "openai", key: prefs.openaiKey, model: prefs.openaiModel };
+  if (prefs.geminiKey) return { provider: "gemini", key: prefs.geminiKey, model: prefs.geminiModel };
+  return null;
+}
+
+/** True when a vision key exists to fall back to (any provider selection). */
+export function hasVisionFallback(prefs: CaptchaSolverPrefs = getCaptchaSolverPrefs()): boolean {
+  return resolveVisionCreds(prefs) !== null;
 }
 
 /** Solver is usable: toggle on, and either the connected assistant or a saved API key. */
@@ -124,6 +164,12 @@ export function captchaSolverReady(): boolean {
   return currentCaptchaKey(prefs).length > 0;
 }
 
+/** True when Echo should auto-attempt a solve on detect (non-agent provider, ready, toggle on). */
+export function captchaAutoSolveReady(): boolean {
+  const prefs = getCaptchaSolverPrefs();
+  return prefs.enabled && prefs.autoSolve && prefs.provider !== "agent" && captchaSolverReady();
+}
+
 /** Status that is safe to broadcast to the renderer and MCP clients — no secrets. */
 export function publicCaptchaSolverStatus(): CaptchaSolverPublic {
   const prefs = getCaptchaSolverPrefs();
@@ -131,6 +177,7 @@ export function publicCaptchaSolverStatus(): CaptchaSolverPublic {
     enabled: prefs.enabled,
     configured: prefs.provider === "agent" || currentCaptchaKey(prefs).length > 0,
     provider: prefs.provider,
+    autoSolve: prefs.autoSolve,
     openaiModel: prefs.openaiModel,
     geminiModel: prefs.geminiModel,
   };

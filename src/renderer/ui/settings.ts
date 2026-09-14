@@ -222,12 +222,23 @@ export function initSettings(
       if (latest) renderCaptchaSolver(latest);
     });
   });
+  const captchaAuto = document.getElementById("captcha-solver-auto") as HTMLInputElement | null;
+  captchaAuto?.addEventListener("change", () => {
+    if (!window.lb) return;
+    void window.lb.updateCaptchaSolver({ autoSolve: captchaAuto.checked });
+  });
   document.getElementById("captcha-solver-key-save")?.addEventListener("click", () => void saveCaptchaKey());
   document.getElementById("captcha-solver-key-clear")?.addEventListener("click", () => void clearCaptchaKey());
+  document.getElementById("captcha-solver-capsolver-save")?.addEventListener("click", () => void saveCapsolverKey());
+  document.getElementById("captcha-solver-capsolver-clear")?.addEventListener("click", () => void clearCapsolverKey());
   document.getElementById("captcha-solver-model-save")?.addEventListener("click", () => void saveCaptchaModel());
   const captchaKey = document.getElementById("captcha-solver-key") as HTMLInputElement | null;
   captchaKey?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") void saveCaptchaKey();
+  });
+  const capsolverKey = document.getElementById("captcha-solver-capsolver-key") as HTMLInputElement | null;
+  capsolverKey?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") void saveCapsolverKey();
   });
   const captchaModel = document.getElementById("captcha-solver-model") as HTMLInputElement | null;
   captchaModel?.addEventListener("keydown", (event) => {
@@ -552,10 +563,10 @@ function renderAppearance(next: AppState): void {
   if (homeUrl && document.activeElement !== homeUrl) homeUrl.value = next.settings.homeUrl;
 }
 
-function currentCaptchaProvider(): "agent" | "openai" | "gemini" {
+function currentCaptchaProvider(): "agent" | "capsolver" | "openai" | "gemini" {
   const select = document.getElementById("captcha-solver-provider") as HTMLSelectElement | null;
   const value = select?.value;
-  if (value === "gemini" || value === "agent") return value;
+  if (value === "gemini" || value === "agent" || value === "capsolver") return value;
   return "openai";
 }
 
@@ -567,8 +578,16 @@ function renderCaptchaSolver(next: AppState): void {
   const provider = document.getElementById("captcha-solver-provider") as HTMLSelectElement | null;
   if (provider && document.activeElement !== provider) provider.value = pub.provider;
   const agent = pub.provider === "agent";
-  document.getElementById("captcha-solver-key-field")?.toggleAttribute("hidden", agent);
-  document.getElementById("captcha-solver-model-field")?.toggleAttribute("hidden", agent);
+  const capsolver = pub.provider === "capsolver";
+  const vision = pub.provider === "openai" || pub.provider === "gemini";
+  // Auto-solve applies to every non-agent provider; hide it for the connected assistant.
+  document.getElementById("captcha-solver-auto-field")?.toggleAttribute("hidden", agent);
+  const auto = document.getElementById("captcha-solver-auto") as HTMLInputElement | null;
+  if (auto) auto.checked = pub.autoSolve;
+  // CapSolver has its own key field; OpenAI/Gemini share the vision key + model fields.
+  document.getElementById("captcha-solver-capsolver-field")?.toggleAttribute("hidden", !capsolver);
+  document.getElementById("captcha-solver-key-field")?.toggleAttribute("hidden", !vision);
+  document.getElementById("captcha-solver-model-field")?.toggleAttribute("hidden", !vision);
   const model = document.getElementById("captcha-solver-model") as HTMLInputElement | null;
   if (model && document.activeElement !== model) {
     model.value = pub.provider === "gemini" ? pub.geminiModel : pub.openaiModel;
@@ -579,11 +598,20 @@ function renderCaptchaSolver(next: AppState): void {
     key.value = "";
     key.placeholder = pub.configured ? "Key saved — paste a new one to replace" : "Paste a key to save";
   }
+  const capKey = document.getElementById("captcha-solver-capsolver-key") as HTMLInputElement | null;
+  if (capKey && document.activeElement !== capKey) {
+    capKey.value = "";
+    capKey.placeholder = pub.configured ? "Key saved — paste a new one to replace" : "Paste your CapSolver key (CAP-…)";
+  }
+  const capStatus = document.getElementById("captcha-solver-capsolver-status");
+  if (capStatus) {
+    capStatus.textContent = capsolver && pub.configured ? "CapSolver key saved." : "No CapSolver key saved.";
+  }
   const status = document.getElementById("captcha-solver-key-status");
   if (status) {
     if (agent) {
       status.textContent = "Challenge images stay in this MCP session. No API key needed.";
-    } else {
+    } else if (vision) {
       status.textContent = pub.configured
         ? `API key saved for ${pub.provider === "gemini" ? "Gemini" : "OpenAI"}.`
         : "No API key saved.";
@@ -600,7 +628,7 @@ async function saveCaptchaKey(): Promise<void> {
   }
   if (!window.lb) return;
   const provider = currentCaptchaProvider();
-  if (provider === "agent") return;
+  if (provider === "agent" || provider === "capsolver") return;
   const patch = provider === "gemini" ? { geminiKey: value } : { openaiKey: value };
   await window.lb.updateCaptchaSolver({ provider, ...patch });
   if (input) input.value = "";
@@ -610,10 +638,29 @@ async function saveCaptchaKey(): Promise<void> {
 async function clearCaptchaKey(): Promise<void> {
   if (!window.lb) return;
   const provider = currentCaptchaProvider();
-  if (provider === "agent") return;
+  if (provider === "agent" || provider === "capsolver") return;
   const patch = provider === "gemini" ? { geminiKey: "" } : { openaiKey: "" };
   await window.lb.updateCaptchaSolver(patch);
   toast("API key removed", "ok");
+}
+
+async function saveCapsolverKey(): Promise<void> {
+  const input = document.getElementById("captcha-solver-capsolver-key") as HTMLInputElement | null;
+  const value = input?.value.trim() ?? "";
+  if (!value) {
+    toast("Paste your CapSolver key first", "error");
+    return;
+  }
+  if (!window.lb) return;
+  await window.lb.updateCaptchaSolver({ provider: "capsolver", capsolverKey: value });
+  if (input) input.value = "";
+  toast("CapSolver key saved", "ok");
+}
+
+async function clearCapsolverKey(): Promise<void> {
+  if (!window.lb) return;
+  await window.lb.updateCaptchaSolver({ capsolverKey: "" });
+  toast("CapSolver key removed", "ok");
 }
 
 async function saveCaptchaModel(): Promise<void> {
@@ -625,7 +672,7 @@ async function saveCaptchaModel(): Promise<void> {
   }
   if (!window.lb) return;
   const provider = currentCaptchaProvider();
-  if (provider === "agent") return;
+  if (provider === "agent" || provider === "capsolver") return;
   const patch = provider === "gemini" ? { geminiModel: value } : { openaiModel: value };
   await window.lb.updateCaptchaSolver({ provider, ...patch });
   toast("Model saved", "ok");

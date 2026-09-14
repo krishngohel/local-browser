@@ -6,13 +6,7 @@
  * Keys never appear in thrown messages.
  */
 
-import {
-  captchaSolverReady,
-  currentCaptchaKey,
-  currentCaptchaModel,
-  getCaptchaSolverPrefs,
-  type CaptchaSolverPrefs,
-} from "./captcha-solver-prefs";
+import { resolveVisionCreds, type VisionCreds } from "./captcha-solver-prefs";
 
 const OPENAI_CHAT = "https://api.openai.com/v1/chat/completions";
 const OPENAI_AUDIO = "https://api.openai.com/v1/audio/transcriptions";
@@ -109,13 +103,14 @@ export function stripCaptchaAnswer(text: string): string {
   return text.replace(/[^a-zA-Z0-9]/g, "");
 }
 
-function requireReady(): CaptchaSolverPrefs {
-  if (!captchaSolverReady()) {
+function requireVisionCreds(): VisionCreds {
+  const creds = resolveVisionCreds();
+  if (!creds) {
     throw new Error(
-      "CAPTCHA solver is off. Enable it in Echo Settings → System and save an API key for OpenAI or Gemini, or switch the provider to Connected assistant.",
+      "No OpenAI or Gemini API key is saved for the vision solver. Add one in Echo Settings → System, or use the CapSolver / Connected assistant provider.",
     );
   }
-  return getCaptchaSolverPrefs();
+  return creds;
 }
 
 function failStatus(provider: string, status: number): Error {
@@ -220,21 +215,19 @@ async function askImage(opts: {
   maxTokens: number;
   temperature: number;
 }): Promise<string> {
-  const prefs = requireReady();
-  const key = currentCaptchaKey(prefs);
-  const model = currentCaptchaModel(prefs);
-  if (prefs.provider === "gemini") {
+  const creds = requireVisionCreds();
+  if (creds.provider === "gemini") {
     return geminiGenerate({
-      key,
-      model,
+      key: creds.key,
+      model: creds.model,
       prompt: opts.prompt,
       imagePng: opts.imagePng,
       system: opts.system,
     });
   }
   return openaiChat({
-    key,
-    model,
+    key: creds.key,
+    model: creds.model,
     system: opts.system,
     prompt: opts.prompt,
     imagePng: opts.imagePng,
@@ -308,12 +301,12 @@ export async function askTileContains(imagePng: Buffer, objectName: string): Pro
 }
 
 export async function transcribeCaptchaAudio(audio: Buffer, mimeType: string): Promise<string> {
-  const prefs = requireReady();
-  const key = currentCaptchaKey(prefs);
-  if (prefs.provider === "gemini") {
+  const creds = requireVisionCreds();
+  const key = creds.key;
+  if (creds.provider === "gemini") {
     const raw = await geminiGenerate({
       key,
-      model: currentCaptchaModel(prefs),
+      model: creds.model,
       prompt: "Transcribe the captcha from the audio file.",
       audio: { bytes: audio, mimeType },
       system: AUDIO_GEMINI_SYSTEM,

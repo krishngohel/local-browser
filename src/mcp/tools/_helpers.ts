@@ -141,7 +141,7 @@ export function define<S extends ZodRawShape>(
           }
           if (name === "captcha_solve" && !captchaSolverReady()) {
             return err(
-              "captcha_solve is off. Enable the CAPTCHA solver in Echo Settings → System (Connected assistant, or an OpenAI/Gemini API key), then retry.",
+              "captcha_solve is off. Enable the CAPTCHA solver in Echo Settings → System (CapSolver, Connected assistant, or an OpenAI/Gemini API key), then retry.",
             );
           }
           return handler(args);

@@ -6,9 +6,18 @@
   </head>
   <body>
     <h1>CAPTCHA fixture</h1>
-    <p>Visible reCAPTCHA-shaped widget for captcha_check detection tests.</p>
-    <!-- Mimics the selectors CAPTCHA_SCAN_SCRIPT looks for; not a real Google challenge. -->
-    <div class="g-recaptcha" id="g-recaptcha-response" style="width: 304px; height: 78px; border: 1px solid #ccc;">
+    <p>Visible reCAPTCHA-shaped widget for captcha_check detection and CapSolver extract/inject tests.</p>
+    <!--
+      Mimics the selectors CAPTCHA_SCAN_SCRIPT + captchaSitekeyScript look for; not a real Google
+      challenge. The fake data-sitekey lets the extractor find a key, and the response textarea
+      lets the inject script write a token. No network / CapSolver call happens here.
+    -->
+    <div
+      class="g-recaptcha"
+      data-sitekey="6Le-TEST-fake-sitekey-000000000000000"
+      data-callback="onEchoCaptchaToken"
+      style="width: 304px; height: 78px; border: 1px solid #ccc;"
+    >
       <iframe
         title="reCAPTCHA"
         src="about:blank"
@@ -17,5 +26,12 @@
         style="border: 0"
       ></iframe>
     </div>
+    <textarea id="g-recaptcha-response" name="g-recaptcha-response" style="display: none"></textarea>
+    <script>
+      // Records that the page callback fired, so an extract/inject smoke test can assert on it.
+      window.onEchoCaptchaToken = function (token) {
+        window.__echoCaptchaToken = token;
+      };
+    </script>
   </body>
 </html>

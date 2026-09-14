@@ -109,7 +109,9 @@ export type AppSettings = {
 export type CaptchaSolverPublic = {
   enabled: boolean;
   configured: boolean;
-  provider: "agent" | "openai" | "gemini";
+  provider: "agent" | "capsolver" | "openai" | "gemini";
+  /** Auto-attempt a solve as soon as a challenge is detected (non-agent providers only). */
+  autoSolve: boolean;
   openaiModel: string;
   geminiModel: string;
 };

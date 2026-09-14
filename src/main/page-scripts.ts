@@ -296,6 +296,137 @@ export const CAPTCHA_REVEAL_SCRIPT = `(() => {
 })()`;
 
 /**
+ * Extracts the public site key (and challenge flavour) a token solver needs. `prefer` biases
+ * the search toward the kind Echo already detected so a page with more than one widget picks
+ * the right one. Returns `{ kind, sitekey, version, enterprise, invisible, action }` or null.
+ * Only the *public* site key is read — no page content, cookies, or the user's answers.
+ */
+export const captchaSitekeyScript = (prefer: string): string => `(() => {
+  const q = (s) => { try { return document.querySelector(s); } catch (e) { return null; } };
+  const qa = (s) => { try { return Array.from(document.querySelectorAll(s)); } catch (e) { return []; } };
+  const param = (url, name) => { try { return new URL(url, location.href).searchParams.get(name); } catch (e) { return null; } };
+  const findTurnstile = () => {
+    const el = q('.cf-turnstile[data-sitekey], [data-cf-turnstile-sitekey]');
+    const key = el && (el.getAttribute('data-sitekey') || el.getAttribute('data-cf-turnstile-sitekey'));
+    if (key) return { kind: 'turnstile', sitekey: key, version: null, enterprise: false, invisible: false, action: el.getAttribute('data-action') || null };
+    return null;
+  };
+  const findHcaptcha = () => {
+    const el = q('.h-captcha[data-sitekey], [data-hcaptcha-sitekey], [data-sitekey].h-captcha');
+    const key = el && (el.getAttribute('data-sitekey') || el.getAttribute('data-hcaptcha-sitekey'));
+    if (key) return { kind: 'hcaptcha', sitekey: key, version: null, enterprise: false, invisible: (el.getAttribute('data-size') || '') === 'invisible', action: null };
+    const src = qa('iframe[src*="hcaptcha.com"]').map((i) => i.src).find(Boolean);
+    const k2 = src && param(src, 'sitekey');
+    if (k2) return { kind: 'hcaptcha', sitekey: k2, version: null, enterprise: false, invisible: false, action: null };
+    return null;
+  };
+  const findRecaptcha = () => {
+    const enterprise = !!(window.grecaptcha && window.grecaptcha.enterprise) || qa('script[src*="recaptcha/enterprise"]').length > 0;
+    const el = q('.g-recaptcha[data-sitekey]');
+    let v2 = el ? el.getAttribute('data-sitekey') : null;
+    let invisible = el ? (el.getAttribute('data-size') || '') === 'invisible' : false;
+    if (!v2) {
+      const anchor = qa('iframe[src*="recaptcha"][src*="anchor"]').map((i) => i.src).find(Boolean);
+      if (anchor) { v2 = param(anchor, 'k'); if ((param(anchor, 'size') || '') === 'invisible') invisible = true; }
+    }
+    let v3 = null;
+    for (const s of qa('script[src*="recaptcha"]')) {
+      const r = param(s.src, 'render');
+      if (r && r !== 'explicit' && r !== 'onload') { v3 = r; break; }
+    }
+    if (v2) return { kind: 'recaptcha', sitekey: v2, version: 'v2', enterprise, invisible, action: null };
+    if (v3) {
+      const a = q('[data-action]');
+      return { kind: 'recaptcha', sitekey: v3, version: 'v3', enterprise, invisible: true, action: a ? a.getAttribute('data-action') : null };
+    }
+    return null;
+  };
+  const finders = { turnstile: findTurnstile, hcaptcha: findHcaptcha, recaptcha: findRecaptcha };
+  const prefer = ${JSON.stringify(prefer)};
+  const order = [];
+  if (finders[prefer]) order.push(prefer);
+  for (const k of ['recaptcha', 'hcaptcha', 'turnstile']) if (order.indexOf(k) < 0) order.push(k);
+  for (const k of order) {
+    const found = finders[k] && finders[k]();
+    if (found && found.sitekey) return found;
+  }
+  return null;
+})()`;
+
+/**
+ * Writes a solved token into the widget's response field(s) and fires the site's callback so
+ * the page accepts it without a human click. `family` picks the field names and callback
+ * source (reCAPTCHA's `___grecaptcha_cfg`, or the element's `data-callback`).
+ */
+export const captchaTokenInjectScript = (family: "recaptcha" | "hcaptcha" | "turnstile", token: string): string => `(() => {
+  const t = ${JSON.stringify(token)};
+  const setVals = (sel) => {
+    let n = 0;
+    document.querySelectorAll(sel).forEach((el) => {
+      el.value = t;
+      if (el.style && el.style.display === 'none') el.style.display = '';
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      n++;
+    });
+    return n;
+  };
+  const callData = (sel) => {
+    let invoked = false;
+    document.querySelectorAll(sel).forEach((el) => {
+      const name = el.getAttribute('data-callback');
+      if (name && typeof window[name] === 'function') { try { window[name](t); invoked = true; } catch (e) {} }
+    });
+    return invoked;
+  };
+  let invoked = false;
+  let fields = 0;
+  const family = ${JSON.stringify(family)};
+  if (family === 'recaptcha') {
+    fields += setVals('textarea#g-recaptcha-response, textarea[name="g-recaptcha-response"], textarea[id^="g-recaptcha-response"]');
+    try {
+      const cfg = window.___grecaptcha_cfg;
+      if (cfg && cfg.clients) {
+        const seen = new Set();
+        for (const id in cfg.clients) {
+          const stack = [cfg.clients[id]];
+          let hops = 0;
+          while (stack.length && hops < 400) {
+            const node = stack.pop();
+            hops++;
+            if (!node || typeof node !== 'object' || seen.has(node)) continue;
+            seen.add(node);
+            for (const key in node) {
+              let val;
+              try { val = node[key]; } catch (e) { continue; }
+              if (typeof val === 'function' && key === 'callback') { try { val(t); invoked = true; } catch (e) {} }
+              else if (val && typeof val === 'object') stack.push(val);
+            }
+          }
+        }
+      }
+    } catch (e) {}
+    if (callData('.g-recaptcha[data-callback], [data-callback]')) invoked = true;
+  } else if (family === 'hcaptcha') {
+    fields += setVals('textarea[name="h-captcha-response"], textarea#h-captcha-response, textarea[name="g-recaptcha-response"], textarea#g-recaptcha-response');
+    if (callData('.h-captcha[data-callback], [data-callback]')) invoked = true;
+  } else if (family === 'turnstile') {
+    fields += setVals('input[name="cf-turnstile-response"], input#cf-turnstile-response, input[name="cf-chl-widget-response"]');
+    if (!fields) {
+      const holder = document.querySelector('.cf-turnstile') || document.body;
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'cf-turnstile-response';
+      inp.value = t;
+      holder.appendChild(inp);
+      fields++;
+    }
+    if (callData('.cf-turnstile[data-callback], [data-callback]')) invoked = true;
+  }
+  return { invoked, fields };
+})()`;
+
+/**
  * What kind of upload target a ref is: `null` when the ref is gone, `"file-input"` for an
  * `<input type=file>`, `"other"` for anything else — which `uploadFile` then clicks while
  * intercepting the file chooser it is expected to open.

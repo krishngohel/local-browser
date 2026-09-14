@@ -216,7 +216,7 @@ page_info       // title, url, meta description, canonical, h1s, counts
 html            // outer HTML of the document or one ref, capped at 50,000 chars
 pdf_text        // text of the current PDF, or the page printed to PDF
 captcha_check   // is a CAPTCHA / anti-bot challenge on the page?
-captcha_solve   // opt-in vision solver (Settings → System); visible puzzles only
+captcha_solve   // opt-in solver (Settings → System): CapSolver token / Connected assistant / OpenAI-Gemini vision; auto-solves on detect
 ```
 
 Use `find` instead of scanning a whole snapshot when you already know the label you want. Use `get_text` rather than `html` unless you need the markup.
@@ -275,7 +275,9 @@ Asserts return PASS or FAIL text. A failed assert is a result, not a crash: repo
 
 ### HAND OFF
 
-If the photo shows a **visible CAPTCHA** and `captcha_solve` is in your tool list, call it first. If Settings uses **Connected assistant**, the first call returns challenge images plus `status: "needs_judgment"` — look at those images and call `captcha_solve` again with `tiles`, `text`, or `offsetPx`. You may refuse; then ask the user. If the tool is missing, fails, or the challenge is Cloudflare Turnstile / an invisible score-based check:
+**If auto-solve is on (CapSolver, or an OpenAI/Gemini key in Settings → System), Echo already attempts the solve the moment a challenge is detected — no tool call needed.** The navigation / `captcha_check` reply says "Echo is auto-solving…"; `wait_for` a few seconds, then re-check or watch for the page to advance. Only step in (call `captcha_solve` to retry, or hand off to the user) if it still blocks. CapSolver covers reCAPTCHA, hCaptcha, and Cloudflare Turnstile, including invisible score-based checks.
+
+If the photo shows a **visible CAPTCHA** and `captcha_solve` is in your tool list, you can also call it directly. If Settings uses **Connected assistant**, the first call returns challenge images plus `status: "needs_judgment"` — look at those images and call `captcha_solve` again with `tiles`, `text`, or `offsetPx`. You may refuse; then ask the user. If the tool is missing, fails, or the challenge cannot be solved (e.g. Cloudflare Turnstile / an invisible score-based check with no CapSolver key):
 
 If the photo shows captcha (unsolved), consent, login, or 2FA:
 
@@ -286,7 +288,7 @@ If the photo shows captcha (unsolved), consent, login, or 2FA:
 
 This hand-off does not exist on a grid tab (`apps_session_start`): it renders offscreen, so there is no window for the user to finish anything in. Run a site that may challenge you as an ordinary tab. `captcha_solve` can still run on a grid tab if the solver is on.
 
-**Before clicking a submit/final-action button, call `captcha_check`.** Some anti-bot checks are invisible score-based systems (reCAPTCHA v3 and similar) rather than a puzzle — there's nothing visible to solve, but the check still scores the click itself, and an automated click can get the action rejected as spam even though the page looked completely normal. If `captcha_check` reports `present: true` with `visible: false`, don't click that action yourself: call `hover` on its ref so the assistant cursor points at it (if `hover` isn't available, just describe which button it is), tell the user to click it themselves, then `wait_for` the result. A real click from the user carries none of the automation signals a scripted click does. If `visible: true` and `captcha_solve` is available, call it before asking the user.
+**Before clicking a submit/final-action button, call `captcha_check`.** Some anti-bot checks are invisible score-based systems (reCAPTCHA v3 and similar) rather than a puzzle — there's nothing visible to solve, but the check still scores the click itself, and an automated click can get the action rejected as spam even though the page looked completely normal. If `captcha_check` reports `present: true` with `visible: false`: when CapSolver auto-solve is on, Echo is already fetching a token to clear it — `wait_for`, then re-check before clicking. Otherwise don't click that action yourself: call `hover` on its ref so the assistant cursor points at it (if `hover` isn't available, just describe which button it is), tell the user to click it themselves, then `wait_for` the result. A real click from the user carries none of the automation signals a scripted click does. If `visible: true` and `captcha_solve` is available, call it before asking the user.
 
 ---
 
@@ -445,8 +447,8 @@ Generated from Echo's tool manifest. Groups marked **off by default** only appea
 | `page_info` | Title, URL, meta description, language, canonical, h1s, and element counts for the page. Optionally target a specific tabId (see tabs_list). |
 | `html` | Outer HTML of the document or of one element by ref. Optionally target a specific tabId (see tabs_list). Capped at 50,000 chars. |
 | `pdf_text` | Text of the current PDF, or of the page printed to PDF. Optionally target a specific tabId (see tabs_list). |
-| `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. If a visible puzzle is present and captcha_solve is available, call it. If it is missing or fails, ask the user to solve the puzzle in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list). |
-| `captcha_solve` | Attempt to solve a visible CAPTCHA. Settings → System chooses Connected assistant (this model looks at challenge images Echo returns, then call captcha_solve again with tiles, text, or offsetPx) or OpenAI/Gemini with an API key. Supports text CAPTCHAs, reCAPTCHA v2 image grids, and slider puzzles. Score-based invisible checks cannot be solved. Requires the user to enable the solver. Optionally target a specific tabId (see tabs_list). |
+| `captcha_check` | Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. When auto-solve is on (CapSolver, or an OpenAI/Gemini key), Echo already attempts it on load and on this check — wait_for a few seconds, then re-check or watch for the page to advance. If a visible puzzle is present and captcha_solve is available, you can also call it. If it is missing or fails, ask the user to solve the puzzle in the Echo window. If present but invisible (a score-based check) and CapSolver is not clearing it, don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list). |
+| `captcha_solve` | Attempt to solve a CAPTCHA. Settings → System chooses CapSolver (a paid token service that clears reCAPTCHA, hCaptcha, and Cloudflare Turnstile, including invisible score-based checks, automatically), Connected assistant (this model looks at challenge images Echo returns, then call captcha_solve again with tiles, text, or offsetPx), or OpenAI/Gemini with an API key for text CAPTCHAs, reCAPTCHA v2 image grids, and slider puzzles. With auto-solve on, Echo already tries the moment a challenge appears, so prefer wait_for and call this only to retry or when auto-solve is off. Requires the user to enable the solver. Optionally target a specific tabId (see tabs_list). |
 
 ### Interaction depth (12) — off by default
 

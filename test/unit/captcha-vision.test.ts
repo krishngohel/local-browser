@@ -13,11 +13,14 @@ import {
   stripCaptchaAnswer,
 } from "../../src/main/captcha-vision";
 import {
+  captchaAutoSolveReady,
   captchaSolverReady,
   currentCaptchaKey,
   DEFAULT_CAPTCHA_SOLVER_PREFS,
   getCaptchaSolverPrefs,
+  hasVisionFallback,
   publicCaptchaSolverStatus,
+  resolveVisionCreds,
   sanitizeCaptchaSolverPrefs,
   setCaptchaSolverPrefs,
   setCaptchaSolverPrefsDir,
@@ -115,6 +118,71 @@ test("agent provider is ready without a key; OpenAI is not", () => {
     setCaptchaSolverPrefs({ provider: "openai" });
     assert.equal(captchaSolverReady(), false);
     assert.equal(publicCaptchaSolverStatus().configured, false);
+  } finally {
+    setCaptchaSolverPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("CapSolver is ready with a key, auto-solves by default, and hides the key from status", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-captcha-capsolver-"));
+  setCaptchaSolverPrefsDir(dir);
+  try {
+    setCaptchaSolverPrefs({ enabled: true, provider: "capsolver", capsolverKey: "CAP-secret-test" });
+    assert.equal(captchaSolverReady(), true);
+    assert.equal(currentCaptchaKey(), "CAP-secret-test");
+    assert.equal(captchaAutoSolveReady(), true, "auto-solve defaults on for a ready CapSolver");
+    const pub = publicCaptchaSolverStatus();
+    assert.equal(pub.provider, "capsolver");
+    assert.equal(pub.configured, true);
+    assert.equal(pub.autoSolve, true);
+    assert.equal(JSON.stringify(pub).includes("CAP-secret"), false, "key must never appear in public status");
+    // Turning auto-solve off keeps the solver ready but stops the auto path.
+    setCaptchaSolverPrefs({ autoSolve: false });
+    assert.equal(captchaSolverReady(), true);
+    assert.equal(captchaAutoSolveReady(), false);
+    // No key → not ready, and never auto.
+    setCaptchaSolverPrefs({ autoSolve: true, capsolverKey: "" });
+    assert.equal(captchaSolverReady(), false);
+    assert.equal(captchaAutoSolveReady(), false);
+  } finally {
+    setCaptchaSolverPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the connected assistant never auto-solves, even when ready", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-captcha-agent-auto-"));
+  setCaptchaSolverPrefsDir(dir);
+  try {
+    setCaptchaSolverPrefs({ enabled: true, provider: "agent" });
+    assert.equal(captchaSolverReady(), true);
+    assert.equal(captchaAutoSolveReady(), false, "agent is a manual two-call loop, not an auto path");
+  } finally {
+    setCaptchaSolverPrefsDir(null);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("vision fallback resolves whichever OpenAI/Gemini key is saved under CapSolver", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "echo-captcha-fallback-"));
+  setCaptchaSolverPrefsDir(dir);
+  try {
+    // CapSolver selected, but an OpenAI key is also saved → vision is available as a fallback.
+    setCaptchaSolverPrefs({
+      enabled: true,
+      provider: "capsolver",
+      capsolverKey: "CAP-x",
+      openaiKey: "sk-fallback",
+    });
+    assert.equal(hasVisionFallback(), true);
+    const creds = resolveVisionCreds();
+    assert.equal(creds?.provider, "openai");
+    assert.equal(creds?.key, "sk-fallback");
+    // No vision key saved → no fallback.
+    setCaptchaSolverPrefs({ openaiKey: "", geminiKey: "" });
+    assert.equal(hasVisionFallback(), false);
+    assert.equal(resolveVisionCreds(), null);
   } finally {
     setCaptchaSolverPrefsDir(null);
     fs.rmSync(dir, { recursive: true, force: true });

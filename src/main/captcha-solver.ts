@@ -7,7 +7,13 @@
  */
 
 import type { PwFrame, PwLocator, PwPage } from "./pw-bridge";
-import { getCaptchaSolverPrefs } from "./captcha-solver-prefs";
+import { getCaptchaSolverPrefs, hasVisionFallback } from "./captcha-solver-prefs";
+import {
+  type CapSolverSiteInfo,
+  solveImageToText,
+  solveWithCapSolverToken,
+} from "./captcha-capsolver";
+import { captchaSitekeyScript, captchaTokenInjectScript } from "./page-scripts";
 import {
   askPuzzleCorrection,
   askPuzzleDistance,
@@ -146,6 +152,29 @@ export async function solveCaptchaOnPage(
   if (!kind.present) {
     return { ok: true, kind: null, status: "done", message: "No CAPTCHA was found on this page." };
   }
+
+  const prefs = getCaptchaSolverPrefs();
+
+  // CapSolver token path handles reCAPTCHA/hCaptcha/Turnstile — including the invisible and
+  // score-based widgets vision cannot — so it runs *before* the "unsupported" hand-offs.
+  if (prefs.provider === "capsolver" && prefs.capsolverKey) {
+    try {
+      const viaToken = await solveWithCapSolver(page, kind, prefs.capsolverKey);
+      if (viaToken) return viaToken;
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (!hasVisionFallback(prefs)) return handoff(kind.kind, message);
+      // A vision key is saved — fall through to the shared vision solvers below.
+    }
+    if (!hasVisionFallback(prefs)) {
+      return handoff(
+        kind.kind,
+        "CapSolver found no site key for this challenge, and no OpenAI/Gemini key is saved as a fallback.",
+      );
+    }
+    // else: fall through to the visibility/vision gates below (only reCAPTCHA/text/slider help).
+  }
+
   if (!kind.visible) {
     return handoff(
       kind.kind,
@@ -156,10 +185,10 @@ export async function solveCaptchaOnPage(
     return handoff(kind.kind, "Cloudflare Turnstile and similar interstitial checks cannot be solved by vision.");
   }
   if (kind.kind === "hcaptcha") {
-    return handoff(kind.kind, "hCaptcha is not supported by the solver yet.");
+    return handoff(kind.kind, "hCaptcha is not supported by the vision solver — use the CapSolver provider.");
   }
   try {
-    const agent = getCaptchaSolverPrefs().provider === "agent";
+    const agent = prefs.provider === "agent";
     if (agent) {
       if (hasJudgment(judgment)) return await applyAgent(page, kind.kind ?? "recaptcha", judgment!);
       return await prepareAgent(page, kind.kind ?? "recaptcha");
@@ -172,6 +201,63 @@ export async function solveCaptchaOnPage(
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, kind: kind.kind, status: "handoff", message };
   }
+}
+
+function capSolverLabel(info: CapSolverSiteInfo): string {
+  if (info.kind === "turnstile") return "Cloudflare Turnstile";
+  if (info.kind === "hcaptcha") return "hCaptcha";
+  return info.version === "v3" ? "reCAPTCHA v3" : "reCAPTCHA v2";
+}
+
+/**
+ * Token/OCR solve through CapSolver. Returns a result when it handled the challenge, or
+ * `null` when it has no path (no site key, or a slider it does not cover) so the caller can
+ * fall back to vision. Throws only on a genuine CapSolver/network failure.
+ */
+async function solveWithCapSolver(
+  page: PwPage,
+  scan: CaptchaScan,
+  key: string,
+): Promise<CaptchaSolveResult | null> {
+  const kind = scan.kind;
+  if (kind === "text") {
+    const image = await findTextCaptchaImage(page);
+    if (!image) return null;
+    const png = await pngOf(image);
+    if (!png) return null;
+    const answer = (await solveImageToText(key, png.toString("base64"))).trim();
+    if (!answer) {
+      return { ok: false, kind: "text", status: "handoff", method: "capsolver", message: "CapSolver could not read the text CAPTCHA." };
+    }
+    const input = await findTextInput(page);
+    if (!input) {
+      return {
+        ok: false,
+        kind: "text",
+        method: "capsolver",
+        message: `CapSolver read “${answer}” but there was no input to type it into. Type it in the Echo window.`,
+      };
+    }
+    await input.click({ timeout: 8000 });
+    await input.fill(answer);
+    return { ok: true, kind: "text", status: "done", method: "capsolver", message: `Filled the text CAPTCHA with “${answer}” (CapSolver).` };
+  }
+  // GeeTest-style sliders need the vendor challenge params, not a plain site key — let vision try.
+  if (kind === "slider") return null;
+
+  const prefer = kind === "cloudflare" ? "turnstile" : kind ?? "";
+  const info = (await page.evaluate(captchaSitekeyScript(prefer))) as CapSolverSiteInfo | null;
+  if (!info || !info.sitekey) return null;
+  const { family, token } = await solveWithCapSolverToken(key, info, page.url());
+  const injected = (await page.evaluate(captchaTokenInjectScript(family, token))) as { invoked?: boolean } | null;
+  const note = injected?.invoked ? "" : " Token placed — submit the form if the page did not advance on its own.";
+  return {
+    ok: true,
+    kind: info.kind ?? kind,
+    status: "done",
+    method: "capsolver",
+    message: `Solved the ${capSolverLabel(info)} challenge with a CapSolver token.${note}`,
+  };
 }
 
 async function prepareAgent(page: PwPage, kind: string): Promise<CaptchaSolveResult> {

@@ -20,7 +20,7 @@ For UI testing or building:
 3. `click` / `type` / `fill` using refs from that snapshot.
 4. `screenshot` after any static visual change (`fullPage: true` if the layout is taller than the window).
 5. `watch` after any interaction that should animate, or when you need to see if something is moving.
-6. `wait_for` after navigation. If a visible captcha appears and `captcha_solve` is available, call it; otherwise stop and ask the user to finish captcha or login in Echo.
+6. `wait_for` after navigation. If auto-solve is on (CapSolver / an API key), Echo solves detected captchas on its own — just `wait_for` and re-check. Otherwise, if a visible captcha appears and `captcha_solve` is available, call it; else stop and ask the user to finish captcha or login in Echo.
 
 If Echo was in the tray, screenshot/snapshot/watch bring the window forward so the page can be photographed.
 

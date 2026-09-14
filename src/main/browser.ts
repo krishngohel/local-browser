@@ -41,7 +41,7 @@ import type { Downloads } from "./downloads";
 import type { History } from "./history";
 import type { TabInfo } from "../shared/types";
 import { pace } from "./pacing";
-import { captchaSolverReady } from "./captcha-solver-prefs";
+import { captchaAutoSolveReady, captchaSolverReady, getCaptchaSolverPrefs } from "./captcha-solver-prefs";
 import { growContentForCaptcha, isCaptchaFrameUrl, pageViewBounds } from "./captcha-layout";
 import { solveCaptchaOnPage, type CaptchaJudgment, type CaptchaSolveResult } from "./captcha-solver";
 import { RateLimiter } from "./rate-limit";
@@ -293,6 +293,10 @@ export class BrowserHub {
   private showAssistantCursor = true;
   /** Hosts already announced as challenged this session, so the notification fires once each. */
   private captchaNotified = new Set<string>();
+  /** Tab ids with an auto-solve in flight, so detect + navigate don't double-fire CapSolver. */
+  private captchaAutoSolving = new Set<string>();
+  /** Last auto-solve attempt per `tabId|host`, so a challenge is not retried in a tight loop. */
+  private captchaAutoAt = new Map<string, number>();
   /** Last time `prepareCaptchaView` ran per tab, so iframe-load bursts do not fight the layout. */
   private captchaRevealAt = new Map<string, number>();
   /** Largest challenge box already fitted per tab, so a 3×3 → 4×4 resize still grows. */
@@ -970,6 +974,10 @@ export class BrowserHub {
     this.thumbs.delete(id);
     this.captchaRevealAt.delete(id);
     this.captchaRevealNeed.delete(id);
+    this.captchaAutoSolving.delete(id);
+    for (const k of this.captchaAutoAt.keys()) {
+      if (k.startsWith(`${id}|`)) this.captchaAutoAt.delete(k);
+    }
     this.dialogHooked.delete(id);
     this.dialogs.forget(id);
     this.tabQueues.delete(id);
@@ -1181,7 +1189,13 @@ export class BrowserHub {
         return landed;
       }
     })();
-    if (!this.captchaNotified.has(host)) {
+    const prefs = getCaptchaSolverPrefs();
+    // CapSolver can also clear invisible/score checks, so it may auto-solve even when !visible.
+    const tokenCapable = prefs.provider === "capsolver";
+    const willAutoSolve = captchaAutoSolveReady() && (found.visible || tokenCapable) && this.canAutoSolve(tab);
+    // When Echo is about to auto-solve, the result notification carries the news instead — no
+    // "needs you" ping up front.
+    if (!willAutoSolve && !this.captchaNotified.has(host)) {
       this.captchaNotified.add(host);
       try {
         if (Notification.isSupported()) {
@@ -1195,6 +1209,10 @@ export class BrowserHub {
       } catch {
         /* notifications are a nicety, never required */
       }
+    }
+    if (willAutoSolve) {
+      this.startAutoSolve(tab, host, found.kind ?? "bot");
+      return `\n⚠ A ${found.kind ?? "bot"} challenge appeared. Echo is auto-solving it now — wait_for ~5–10s, then re-check with captcha_check or look for the page to advance. If it still blocks, ask the user to finish it in the Echo window.`;
     }
     if (!found.visible) {
       return `\n⚠ A ${found.kind ?? "bot"} challenge is present but invisible (score-based). Don't click the flagged action yourself — hover its ref and ask the user to click it.`;
@@ -1217,13 +1235,76 @@ export class BrowserHub {
   }
 
   async detectCaptcha(tabId?: string): Promise<{ present: boolean; kind: string | null; visible: boolean }> {
-    return this.withTab(tabId, (tab) => this.detectCaptchaCore(tab));
+    return this.withTab(tabId, async (tab) => {
+      const found = await this.detectCaptchaCore(tab);
+      if (found?.present) {
+        const tokenCapable = getCaptchaSolverPrefs().provider === "capsolver";
+        if (captchaAutoSolveReady() && (found.visible || tokenCapable) && this.canAutoSolve(tab)) {
+          this.startAutoSolve(tab, this.tabHost(tab), found.kind ?? "bot");
+        }
+      }
+      return found;
+    });
+  }
+
+  /** Auto-solve only the foreground tab (a background attach would steal the visible view). */
+  private canAutoSolve(tab: Tab): boolean {
+    return !tab.osr && tab.id === this.activeId;
+  }
+
+  private tabHost(tab: Tab): string {
+    try {
+      return new URL(tab.view.webContents.getURL()).host;
+    } catch {
+      return tab.view.webContents.getURL();
+    }
+  }
+
+  /**
+   * Fire-and-forget auto-solve: run the configured (non-agent) solver once the moment a
+   * challenge is seen, so the assistant never has to call `captcha_solve` or wait on a person.
+   * Deduped per tab (one in flight) and per tab/host (a 20s cooldown) so a load/detect burst
+   * or a re-challenge does not hammer CapSolver.
+   */
+  private startAutoSolve(tab: Tab, host: string, kind: string): void {
+    if (this.captchaAutoSolving.has(tab.id)) return;
+    const mapKey = `${tab.id}|${host}`;
+    const now = Date.now();
+    if (now - (this.captchaAutoAt.get(mapKey) ?? 0) < 20_000) return;
+    this.captchaAutoAt.set(mapKey, now);
+    this.captchaAutoSolving.add(tab.id);
+    void (async () => {
+      try {
+        const res = await this.solveCaptchaCore(tab);
+        this.notifyAutoSolveResult(host, kind, res);
+      } catch {
+        /* best-effort — the on-load / detect notice already told the assistant to wait or hand off */
+      } finally {
+        this.captchaAutoSolving.delete(tab.id);
+      }
+    })();
+  }
+
+  private notifyAutoSolveResult(host: string, kind: string, res: CaptchaSolveResult): void {
+    try {
+      if (!Notification.isSupported()) return;
+      // Vision successes return ok:true without a status; only handoff / needs_judgment are "not solved".
+      const solved = res.ok && res.status !== "handoff" && res.status !== "needs_judgment";
+      new Notification({
+        title: solved ? "Echo solved a CAPTCHA" : "Echo needs you: CAPTCHA",
+        body: solved
+          ? `Auto-solved the ${kind} challenge on ${host}.`
+          : `Could not auto-solve the ${kind} challenge on ${host}. ${res.message}`,
+      }).show();
+    } catch {
+      /* notifications are a nicety, never required */
+    }
   }
 
   private async solveCaptchaCore(tab: Tab, judgment?: CaptchaJudgment): Promise<CaptchaSolveResult> {
     if (!captchaSolverReady()) {
       throw new Error(
-        "CAPTCHA solver is off. Enable it in Echo Settings → System (Connected assistant, or an OpenAI/Gemini API key).",
+        "CAPTCHA solver is off. Enable it in Echo Settings → System (CapSolver, Connected assistant, or an OpenAI/Gemini API key).",
       );
     }
     this.refuseDetachedCapture(tab, "solve a CAPTCHA on");

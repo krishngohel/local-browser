@@ -52,6 +52,8 @@ export type PwMouse = {
 
 export type PwPage = PwLocatorRoot & {
   frames: () => PwFrame[];
+  /** Runs a JS expression string in the page's main world and returns its value. */
+  evaluate: (script: string) => Promise<unknown>;
   mouse: PwMouse;
   on: (event: "dialog", listener: (dialog: PwDialog) => void) => void;
   waitForEvent: (event: "filechooser", opts?: { timeout?: number }) => Promise<PwFileChooser>;

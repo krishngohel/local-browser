@@ -47,7 +47,9 @@ declare global {
       getCaptchaSolver: () => Promise<CaptchaSolverPublic>;
       updateCaptchaSolver: (next: {
         enabled?: boolean;
-        provider?: "agent" | "openai" | "gemini";
+        provider?: "agent" | "capsolver" | "openai" | "gemini";
+        autoSolve?: boolean;
+        capsolverKey?: string;
         openaiKey?: string;
         geminiKey?: string;
         openaiModel?: string;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { captchaSolverReady } from "../../main/captcha-solver-prefs";
+import { captchaAutoSolveReady, captchaSolverReady } from "../../main/captcha-solver-prefs";
 import { define, err, text, type ToolDeps, type ToolResult } from "./_helpers";
 
 export function registerRead(server: McpServer, deps: ToolDeps): void {
@@ -172,18 +172,23 @@ export function registerRead(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "captcha_check",
-    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. If a visible puzzle is present and captcha_solve is available, call it. If it is missing or fails, ask the user to solve the puzzle in the Echo window. If present but invisible (a score-based check), don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list).",
+    "Report whether a CAPTCHA or anti-bot challenge (reCAPTCHA, hCaptcha, Cloudflare Turnstile) is on the page. When auto-solve is on (CapSolver, or an OpenAI/Gemini key), Echo already attempts it on load and on this check — wait_for a few seconds, then re-check or watch for the page to advance. If a visible puzzle is present and captcha_solve is available, you can also call it. If it is missing or fails, ask the user to solve the puzzle in the Echo window. If present but invisible (a score-based check) and CapSolver is not clearing it, don't click the flagged action yourself — hover its ref so the cursor points at it, then ask the user to click it. Optionally target a specific tabId (see tabs_list).",
     { tabId: z.string().optional() },
     async ({ tabId }) => {
       try {
         const found = await hub.detectCaptcha(tabId);
         if (!found.present) return text(JSON.stringify({ present: false }));
         const solverOn = captchaSolverReady();
+        const autoOn = captchaAutoSolveReady();
         const action = !found.visible
-          ? "This is invisible/score-based, not a puzzle to solve. Don't click the flagged action yourself — call hover on its ref so the cursor points at it, ask the user to click it, then wait_for the result."
-          : solverOn
-            ? "Call captcha_solve. If Settings uses Connected assistant, look at the images it returns and call captcha_solve again with tiles, text, or offsetPx. If it fails or the client refuses, ask the user to solve it in the Echo window."
-            : "Ask the user to solve it in the Echo window, then continue. captcha_solve is off until the user enables the solver in Settings → System.";
+          ? autoOn
+            ? "This is invisible/score-based. Echo's auto-solver (CapSolver) is attempting it now — wait_for ~5–10s, then re-check or watch for the page to advance. If it still blocks, don't click the flagged action yourself: hover its ref, ask the user to click it, then wait_for."
+            : "This is invisible/score-based, not a puzzle to solve. Don't click the flagged action yourself — call hover on its ref so the cursor points at it, ask the user to click it, then wait_for the result."
+          : autoOn
+            ? "Echo is auto-solving this challenge — wait_for ~5–10s, then re-check or watch for the page to advance. Call captcha_solve to retry if it stalls, or ask the user to finish it in the Echo window."
+            : solverOn
+              ? "Call captcha_solve. If Settings uses Connected assistant, look at the images it returns and call captcha_solve again with tiles, text, or offsetPx. If it fails or the client refuses, ask the user to solve it in the Echo window."
+              : "Ask the user to solve it in the Echo window, then continue. captcha_solve is off until the user enables the solver in Settings → System.";
         return text(
           JSON.stringify({
             present: true,
@@ -203,7 +208,7 @@ export function registerRead(server: McpServer, deps: ToolDeps): void {
     server,
     deps,
     "captcha_solve",
-    "Attempt to solve a visible CAPTCHA. Settings → System chooses Connected assistant (this model looks at challenge images Echo returns, then call captcha_solve again with tiles, text, or offsetPx) or OpenAI/Gemini with an API key. Supports text CAPTCHAs, reCAPTCHA v2 image grids, and slider puzzles. Score-based invisible checks cannot be solved. Requires the user to enable the solver. Optionally target a specific tabId (see tabs_list).",
+    "Attempt to solve a CAPTCHA. Settings → System chooses CapSolver (a paid token service that clears reCAPTCHA, hCaptcha, and Cloudflare Turnstile, including invisible score-based checks, automatically), Connected assistant (this model looks at challenge images Echo returns, then call captcha_solve again with tiles, text, or offsetPx), or OpenAI/Gemini with an API key for text CAPTCHAs, reCAPTCHA v2 image grids, and slider puzzles. With auto-solve on, Echo already tries the moment a challenge appears, so prefer wait_for and call this only to retry or when auto-solve is off. Requires the user to enable the solver. Optionally target a specific tabId (see tabs_list).",
     {
       tabId: z.string().optional(),
       challengeId: z.string().optional(),
