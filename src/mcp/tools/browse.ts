@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getTransferPrefs } from "../../main/transfer-prefs";
+import { prefersLeanCaptures } from "../../main/mcp-sessions";
 import { define, err, photo, text, type ToolDeps } from "./_helpers";
 
 export function registerBrowse(server: McpServer, deps: ToolDeps): void {
@@ -95,8 +96,12 @@ export function registerBrowse(server: McpServer, deps: ToolDeps): void {
           return text(`${caption}\n\n(Page photo off in Echo Settings → Transfers.)`);
         }
         try {
-          const view = await hub.captureForModel({ tabId });
-          return photo(`${caption}\n\nPhoto ${view.width}×${view.height}`, view.jpeg);
+          // Non-Claude clients get a leaner photo (smaller/lower-quality JPEG) and a terser
+          // caption; Claude Desktop keeps the full-detail photo. Same number of calls either way.
+          const lean = prefersLeanCaptures(deps.clientKind());
+          const view = await hub.captureForModel({ tabId, lean });
+          const sizeNote = lean ? "" : `\n\nPhoto ${view.width}×${view.height}`;
+          return photo(`${caption}${sizeNote}`, view.jpeg);
         } catch (captureError) {
           const reason = captureError instanceof Error ? captureError.message : String(captureError);
           return text(`${caption}\n\n(Photo unavailable: ${reason})`);

@@ -43,6 +43,24 @@ export function dropMcpSession(id: string | undefined): void {
   onChange?.();
 }
 
+/** Client kind for one request, from the X-Echo-Client header, UA, and MCP initialize name. */
+export function mcpClientKind(
+  req: IncomingMessage,
+  client?: { name?: string; version?: string },
+): McpClientKind {
+  return identify(req, client).kind;
+}
+
+/**
+ * Non-Claude clients get leaner model captures. Claude Desktop ingests images fast and cheaply,
+ * so it keeps the full-detail page photo; every other client (ChatGPT/Codex, Cursor, unknown)
+ * trades a little visual detail for a much smaller JPEG, which is the biggest per-step cost for
+ * slower models. Payload-only: it does not change how many tool calls a model makes.
+ */
+export function prefersLeanCaptures(kind: McpClientKind): boolean {
+  return kind !== "claude";
+}
+
 export function noteMcpRequest(
   id: string | undefined,
   req: IncomingMessage,

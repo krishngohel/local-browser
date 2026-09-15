@@ -66,6 +66,7 @@ function registerAll(opts: { evaluateEnabled?: boolean } = {}): Registered[] {
     recorder: {} as never,
     activity: new ActivityLog(),
     clientName: () => "unit-test",
+    clientKind: () => "other",
     history: {} as never,
     bookmarks: {} as never,
     downloads: {} as never,

@@ -752,13 +752,14 @@ if (!gotLock) {
     try {
       await startMcpHttp(
         token,
-        (server, clientName) =>
+        (server, clientName, clientKind) =>
           registerTools(server, {
             hub,
             tests,
             recorder,
             activity,
             clientName,
+            clientKind,
             history,
             bookmarks,
             downloads,

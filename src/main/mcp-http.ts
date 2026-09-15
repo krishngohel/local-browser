@@ -5,11 +5,11 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { MCP_BIND, MCP_HOST, MCP_PORT_PREFERRED, MCP_PORT_SPAN, mcpUrl, mcpUrlForHost, setMcpPort } from "./paths";
 import { lanIPv4s } from "./net";
 import { mcpInstructions } from "./skill-tree";
-import { dropMcpSession, mcpLiveStatus, noteMcpRequest } from "./mcp-sessions";
+import { dropMcpSession, mcpClientKind, mcpLiveStatus, noteMcpRequest, type McpClientKind } from "./mcp-sessions";
 
 export function startMcpHttp(
   token: string,
-  register: (server: McpServer, clientName: () => string) => void,
+  register: (server: McpServer, clientName: () => string, clientKind: () => McpClientKind) => void,
   version = "1.0.0",
 ): Promise<{ close: () => void; port: number }> {
   const transports = new Map<string, StreamableHTTPServerTransport>();
@@ -92,7 +92,8 @@ export function startMcpHttp(
         },
       );
       const clientName = () => server.server.getClientVersion()?.name ?? "assistant";
-      register(server, clientName);
+      const clientKind = () => mcpClientKind(req, server.server.getClientVersion());
+      register(server, clientName, clientKind);
       server.server.oninitialized = () => {
         const id = transport.sessionId;
         noteMcpRequest(id, req, server.server.getClientVersion());

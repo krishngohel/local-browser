@@ -1380,18 +1380,24 @@ export class BrowserHub {
     return dest;
   }
 
-  async captureForModel(opts?: { fullPage?: boolean; tabId?: string }): Promise<{
+  async captureForModel(opts?: { fullPage?: boolean; tabId?: string; lean?: boolean }): Promise<{
     jpeg: Buffer;
     width: number;
     height: number;
     png: Buffer;
   }> {
     const png = await this.capturePng({ fullPage: opts?.fullPage, tabId: opts?.tabId });
-    const fitted = fitForModel(nativeImage.createFromBuffer(png));
+    const source = nativeImage.createFromBuffer(png);
+    // Non-Claude clients (see prefersLeanCaptures) get a smaller, lower-quality JPEG: the
+    // incidental snapshot photo is the largest per-step cost for slower models, and Claude
+    // Desktop keeps the full-detail path untouched.
+    const fitted = opts?.lean
+      ? fitForModel(source, LEAN_MODEL_MAX_W, LEAN_MODEL_MAX_H)
+      : fitForModel(source);
     const size = fitted.getSize();
     return {
       png,
-      jpeg: fitted.toJPEG(72),
+      jpeg: fitted.toJPEG(opts?.lean ? LEAN_MODEL_JPEG_QUALITY : 72),
       width: size.width,
       height: size.height,
     };
@@ -3333,6 +3339,14 @@ function subsample<T>(items: T[], max: number): T[] {
   }
   return out;
 }
+
+/**
+ * Lean capture budget for non-Claude clients. ~1024×1280 at q64 roughly halves the vision
+ * tiles and cuts JPEG bytes vs. the full 1280×1600 @ q72 path, at a small cost in fine detail.
+ */
+const LEAN_MODEL_MAX_W = 1024;
+const LEAN_MODEL_MAX_H = 1280;
+const LEAN_MODEL_JPEG_QUALITY = 64;
 
 function fitForModel(image: Electron.NativeImage, maxWidth = 1280, maxHeight = 1600): Electron.NativeImage {
   const { width, height } = image.getSize();

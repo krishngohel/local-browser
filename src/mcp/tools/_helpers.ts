@@ -13,6 +13,7 @@ import type { AppSettings, TransferPrefs } from "../../shared/types";
 import { GROUP_LABELS, TOOL_MANIFEST, type ToolGroup } from "../../shared/tool-manifest";
 import { getTransferPrefs } from "../../main/transfer-prefs";
 import { captchaSolverReady } from "../../main/captcha-solver-prefs";
+import type { McpClientKind } from "../../main/mcp-sessions";
 
 export type ToolContent =
   | { type: "text"; text: string }
@@ -27,6 +28,8 @@ export type ToolDeps = {
   activity: ActivityLog;
   /** Name of the MCP client that owns this session, for the activity log. */
   clientName: () => string;
+  /** Kind of MCP client (claude/chatgpt/cursor/other), for per-client payload tuning. */
+  clientKind: () => McpClientKind;
   history: History;
   bookmarks: Bookmarks;
   downloads: Downloads;
