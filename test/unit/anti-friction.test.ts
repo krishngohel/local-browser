@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { cleanChromeUserAgent } from "../../src/main/user-agent";
-import { PACING_MIN_MS, PACING_MAX_MS, pacingDelayMs, pace } from "../../src/main/pacing";
+import {
+  PACING_MIN_MS,
+  PACING_MAX_MS,
+  PACING_LONG_MIN_MS,
+  PACING_ABS_MAX_MS,
+  pacingDelayMs,
+  pace,
+} from "../../src/main/pacing";
 import {
   RateLimiter,
   retryAfterUntil,
@@ -22,10 +29,25 @@ test("cleanChromeUserAgent drops Electron/app tokens and keeps a truthful Chrome
   assert.match(cleanChromeUserAgent("win32", "garbage"), /Chrome\/120\.0\.0\.0/);
 });
 
-test("pacingDelayMs stays within the configured range", () => {
-  for (const r of [0, 0.5, 1, 0.999]) {
-    const ms = pacingDelayMs(() => r);
-    assert.ok(ms >= PACING_MIN_MS && ms <= PACING_MAX_MS, `${ms} out of range for rng ${r}`);
+test("pacingDelayMs draws a human-cadence gap: base range, with an occasional longer tail", () => {
+  // RNG is drawn in a fixed order: base, then the long-pause coin, then the long magnitude.
+  const seq = (values: number[]) => {
+    let i = 0;
+    return () => values[Math.min(i++, values.length - 1)];
+  };
+
+  // Coin high (>= PACING_LONG_CHANCE) -> base gap only, bounded by [MIN, MAX].
+  assert.equal(pacingDelayMs(seq([0, 0.9])), PACING_MIN_MS, "base floor with no long tail");
+  assert.equal(pacingDelayMs(seq([1, 0.9])), PACING_MAX_MS, "base ceiling with no long tail");
+
+  // Coin low (< PACING_LONG_CHANCE) -> base + an extra reading pause.
+  assert.equal(pacingDelayMs(seq([0, 0, 0])), PACING_MIN_MS + PACING_LONG_MIN_MS, "floor + shortest tail");
+  assert.equal(pacingDelayMs(seq([1, 0, 1])), PACING_ABS_MAX_MS, "ceiling + longest tail = absolute max");
+
+  // Whatever the RNG does, a real draw never escapes [MIN, ABS_MAX].
+  for (let k = 0; k < 500; k++) {
+    const ms = pacingDelayMs(Math.random);
+    assert.ok(ms >= PACING_MIN_MS && ms <= PACING_ABS_MAX_MS, `${ms} out of [${PACING_MIN_MS}, ${PACING_ABS_MAX_MS}]`);
   }
 });
 
