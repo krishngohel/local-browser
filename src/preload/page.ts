@@ -1,19 +1,67 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { firefoxUserAgent } from "../main/user-agent";
 
-// --- Present as plain Chrome, at document-start -----------------------------------------
+// --- Present as a normal browser, at document-start --------------------------------------
 //
-// Electron leaks "Electron"/app-name tokens through `navigator.userAgentData` — both the
-// low-entropy `brands` and the high-entropy `fullVersionList` — and can expose
-// `navigator.webdriver`. Sites like Google's sign-in read those JS signals and refuse the
-// browser as "not secure", even when the UA string + client-hint headers are already clean
-// (chrome-compat.applyChromeSession does that over the wire). This scrubs the JS signals in
-// the page's own world. Crucially it runs from the preload, which finishes before the page's
-// first script, so it beats the detection code — unlike a did-start-loading/dom-ready inject.
-//
-// Truthful: it only removes the Electron/app-name tokens and keeps the real Chromium version;
-// it does not claim to be a browser Echo is not.
-function installEchoStealth(): void {
+// Google's "browser or app may not be secure" interstitial is a server-side WebView check:
+// an embedded Chromium that claims to be Google Chrome is rejected. HTTP (applyChromeSession)
+// already sends a Firefox UA to accounts.google.com; this keeps JS on that page in agreement
+// and, on every other page, still scrubs Electron tells (webdriver, UA-CH brands, outer==inner).
+function installEchoStealth(firefoxUa: string): void {
   type Brand = { brand?: string; version?: string };
+  const nav = navigator as unknown as Record<string, unknown> & { userAgent: string };
+  const win = window as unknown as Record<string, unknown>;
+  const host = String(location.hostname || "").toLowerCase();
+  const path = String(location.pathname || "").toLowerCase();
+  const googleAuth =
+    host === "accounts.google.com" ||
+    host.endsWith(".accounts.google.com") ||
+    host === "accounts.youtube.com" ||
+    host === "gsi.google.com" ||
+    host === "oauth2.googleapis.com" ||
+    ((host === "google.com" || host === "www.google.com") && /\/(signin|accounts|oauth)/.test(path));
+
+  const define = (obj: object, key: string, getter: () => unknown): void => {
+    try {
+      Object.defineProperty(obj, key, { get: getter, configurable: true });
+    } catch {
+      /* locked by the engine */
+    }
+  };
+
+  try {
+    define(Navigator.prototype, "webdriver", () => undefined);
+    define(nav, "webdriver", () => undefined);
+  } catch {
+    /* AutomationControlled already zeroes the native getter */
+  }
+
+  // BrowserView fills its box: outerWidth === innerWidth is a classic "this is a WebView" tell.
+  try {
+    const chromeH = 88;
+    define(win, "outerHeight", () => Math.round(Number(win.innerHeight) + chromeH));
+    define(win, "outerWidth", () => Math.round(Number(win.innerWidth)));
+  } catch {
+    /* cosmetic */
+  }
+
+  if (googleAuth) {
+    define(nav, "userAgent", () => firefoxUa);
+    define(nav, "appVersion", () => firefoxUa.replace(/^Mozilla\//, ""));
+    define(nav, "vendor", () => "");
+    define(nav, "appName", () => "Netscape");
+    define(nav, "product", () => "Gecko");
+    define(nav, "productSub", () => "20100101");
+    define(nav, "userAgentData", () => undefined);
+    define(win, "chrome", () => undefined);
+    try {
+      (win as { __echoStealth?: boolean }).__echoStealth = true;
+    } catch {
+      /* */
+    }
+    return;
+  }
+
   const scrub = (list: Brand[] | undefined): Brand[] | undefined => {
     if (!Array.isArray(list)) return list;
     const out = list.filter((b) => b && typeof b.brand === "string" && !/electron|echo/i.test(b.brand));
@@ -23,19 +71,12 @@ function installEchoStealth(): void {
     }
     return out;
   };
-  const nav = navigator as unknown as Record<string, unknown> & { userAgent: string };
-  const win = window as unknown as Record<string, unknown>;
-  try {
-    Object.defineProperty(nav, "webdriver", { get: () => false, configurable: true });
-  } catch {
-    /* some builds lock the property; the AutomationControlled switch already zeroes it */
-  }
   try {
     const ua = nav.userAgent || "";
     if (/electron|(?:^| )echo\//i.test(ua)) {
       const clean = ua.replace(/\s(?:Echo|Electron)\/[^\s]+/gi, "");
-      Object.defineProperty(nav, "userAgent", { get: () => clean, configurable: true });
-      Object.defineProperty(nav, "appVersion", { get: () => clean.replace(/^Mozilla\//, ""), configurable: true });
+      define(nav, "userAgent", () => clean);
+      define(nav, "appVersion", () => clean.replace(/^Mozilla\//, ""));
     }
   } catch {
     /* keep the session-provided UA */
@@ -46,11 +87,7 @@ function installEchoStealth(): void {
       | undefined;
     if (uad) {
       const brands = scrub(uad.brands);
-      try {
-        Object.defineProperty(uad, "brands", { get: () => brands, configurable: true });
-      } catch {
-        /* read-only in some builds; high-entropy scrub below still runs */
-      }
+      define(uad, "brands", () => brands);
       if (typeof uad.getHighEntropyValues === "function") {
         const orig = uad.getHighEntropyValues.bind(uad);
         Object.defineProperty(uad, "getHighEntropyValues", {
@@ -78,12 +115,18 @@ function installEchoStealth(): void {
   } catch {
     /* window.chrome is best-effort cosmetic */
   }
+  try {
+    (win as { __echoStealth?: boolean }).__echoStealth = true;
+  } catch {
+    /* */
+  }
 }
 
 try {
-  // Runs the shim in the page's main world at document-start (same mechanism as the dialog
-  // shim below). Self-contained: it captures nothing from this isolated-world scope.
-  contextBridge.executeInMainWorld({ func: installEchoStealth });
+  contextBridge.executeInMainWorld({
+    func: installEchoStealth,
+    args: [firefoxUserAgent(process.platform)],
+  });
 } catch {
   /* older Electron without executeInMainWorld — the wire-level UA/client hints still apply */
 }

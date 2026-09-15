@@ -16,6 +16,7 @@ import { CHROME_HEIGHT, CDP_PORT, downloadsDir, partitionName } from "./paths";
 import { applyChromeSession, installChromePageShim } from "./chrome-compat";
 import { ECHO_SELECTORS_SOURCE } from "../shared/selector-script";
 import { ASSISTANT_NAV_REFUSAL, isAssistantNavigable } from "../shared/url-policy";
+import { isGoogleAuthUrl } from "./user-agent";
 import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
@@ -179,6 +180,27 @@ const APPS_SESSION_CAP = 6;
  * when the last incognito tab closes — see `createTab` / `closeTab`.
  */
 const INCOGNITO_PARTITION = "incognito";
+
+/**
+ * Shared webPreferences for every page (BrowserView, OSR window, Google auth popup).
+ * `backgroundThrottling: false` so a detached/background tab's own timers keep running at
+ * normal speed (see `withPage` for Playwright's separate detached-tab path).
+ * `nodeIntegrationInSubFrames` is on so the stealth preload runs in GIS/SSO iframes.
+ */
+function pageWebPreferences(partition: string, extra?: Electron.WebPreferences): Electron.WebPreferences {
+  return {
+    partition,
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
+    // Google Identity Services and many SSO flows run their checks inside iframes. Without
+    // this, the document-start stealth preload never loads in those frames.
+    nodeIntegrationInSubFrames: true,
+    preload: path.join(__dirname, "..", "preload", "page.js"),
+    backgroundThrottling: false,
+    ...extra,
+  };
+}
 /** Per-tab request ring. Matches the `network_log` cap in the tool contract. */
 const NETWORK_LOG_CAP = 200;
 /**
@@ -652,21 +674,7 @@ export class BrowserHub {
     const partition = incognito ? INCOGNITO_PARTITION : partitionName();
     if (incognito) this.prepareSession(session.fromPartition(partition));
     const view = new BrowserView({
-      webPreferences: {
-        partition,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        preload: path.join(__dirname, "..", "preload", "page.js"),
-        // A BrowserView not currently attached to the window is otherwise treated as
-        // backgrounded: Chromium throttles its own JS timers there (setTimeout/setInterval,
-        // rAF). A page's own script — form validation, a polling widget — would then react to
-        // a tabId-targeted click/type more slowly, or not at all, while its tab sits in the
-        // background. Multi-tab tool calls need every tab's page script to keep running at
-        // normal speed regardless of which one is attached; see `withPage` for the separate
-        // fix that makes Playwright's own actions work on a detached tab at all.
-        backgroundThrottling: false,
-      },
+      webPreferences: pageWebPreferences(partition),
     });
     const tab: Tab = {
       id,
@@ -728,18 +736,7 @@ export class BrowserHub {
       show: false,
       width: 1280,
       height: 800,
-      webPreferences: {
-        partition,
-        sandbox: true,
-        contextIsolation: true,
-        nodeIntegration: false,
-        preload: path.join(__dirname, "..", "preload", "page.js"),
-        offscreen: true,
-        // Same reason as `createTab`: an offscreen window is never foregrounded, and
-        // Chromium would otherwise throttle the page's own timers while the assistant
-        // works on it.
-        backgroundThrottling: false,
-      },
+      webPreferences: pageWebPreferences(partition, { offscreen: true }),
     });
     // Render no faster than `forwardGridFrame` forwards, so the throttle there drops
     // almost nothing and the compositor is not doing work that gets thrown away.
@@ -2847,8 +2844,27 @@ export class BrowserHub {
       // `createTab` runs in main, which is not subject to the web→file navigation block a
       // renderer would hit, so a hostile page could otherwise `window.open` a local file into
       // a tab the read tools can dump. Same policy as the assistant path.
-      if (isAssistantNavigable(url)) this.createTab(url, { record: false });
-      return { action: "deny" };
+      if (!isAssistantNavigable(url)) return { action: "deny" as const };
+      // Google SSO (Continue with Google, accounts.google.com) posts back through window.opener.
+      // Opening it as a new tab breaks that, and Google also fingerprints the tab's WebView
+      // chrome. A real framed popup with the same partition + preload keeps the session and
+      // the opener relationship.
+      if (isGoogleAuthUrl(url)) {
+        return {
+          action: "allow" as const,
+          overrideBrowserWindowOptions: {
+            width: 520,
+            height: 740,
+            autoHideMenuBar: true,
+            webPreferences: pageWebPreferences(tab.partition),
+          },
+        };
+      }
+      this.createTab(url, { record: false });
+      return { action: "deny" as const };
+    });
+    wc.on("did-create-window", (win) => {
+      installChromePageShim(win.webContents);
     });
     wc.on("page-favicon-updated", (_e, icons) => {
       void this.resolveFavicon(tab, icons ?? []);

@@ -1,4 +1,5 @@
 import { app, type Session } from "electron";
+import { firefoxUserAgent, isGoogleAuthUrl } from "./user-agent";
 
 export function chromeVersion(): string {
   return process.versions.chrome || "136.0.7103.48";
@@ -46,6 +47,7 @@ export function applyChromeCommandLine(): void {
 export function chromePageShim(): string {
   const major = chromeMajor();
   return `(() => {
+    if (window.__echoStealth) return;
     try { Object.defineProperty(navigator, 'webdriver', { get: () => undefined }); } catch (e) {}
     const chromeBrand = { brand: 'Google Chrome', version: '${major}' };
     const data = navigator.userAgentData;
@@ -67,6 +69,7 @@ export function installChromePageShim(wc: Electron.WebContents): void {
 
 export function applyChromeSession(ses: Session): void {
   const ua = chromeUserAgent();
+  const firefoxUa = firefoxUserAgent(process.platform);
   ses.setUserAgent(ua, "en-US,en");
   ses.webRequest.onBeforeSendHeaders(
     {
@@ -74,6 +77,18 @@ export function applyChromeSession(ses: Session): void {
     },
     (details, callback) => {
       const requestHeaders = { ...details.requestHeaders };
+      // Google's accounts endpoint fingerprints an embedded Chromium that advertises itself as
+      // Chrome (the "browser or app may not be secure" interstitial). A Firefox UA skips that
+      // check; Client Hints would contradict it, so they come off too. Every other request
+      // keeps the truthful Chrome UA + hints.
+      if (isGoogleAuthUrl(details.url)) {
+        requestHeaders["User-Agent"] = firefoxUa;
+        for (const key of Object.keys(requestHeaders)) {
+          if (/^sec-ch-ua/i.test(key)) delete requestHeaders[key];
+        }
+        callback({ requestHeaders });
+        return;
+      }
       requestHeaders["User-Agent"] = ua;
       requestHeaders["sec-ch-ua"] = chromeSecChUa();
       requestHeaders["sec-ch-ua-mobile"] = "?0";

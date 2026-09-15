@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cleanChromeUserAgent } from "../../src/main/user-agent";
+import { cleanChromeUserAgent, firefoxUserAgent, isGoogleAuthUrl, isGoogleAuthHost } from "../../src/main/user-agent";
 import {
   PACING_MIN_MS,
   PACING_MAX_MS,
@@ -27,6 +27,24 @@ test("cleanChromeUserAgent drops Electron/app tokens and keeps a truthful Chrome
   assert.match(cleanChromeUserAgent("linux", "126.0.0.0"), /X11; Linux x86_64/);
   // A malformed version falls back rather than emitting "Chrome/NaN".
   assert.match(cleanChromeUserAgent("win32", "garbage"), /Chrome\/120\.0\.0\.0/);
+});
+
+test("firefoxUserAgent is a desktop Firefox string with no Chrome/Electron tokens", () => {
+  const win = firefoxUserAgent("win32");
+  assert.match(win, /Firefox\/142\.0/);
+  assert.match(win, /Windows NT 10\.0; Win64; x64/);
+  assert.ok(!/Chrome|Electron|Echo/i.test(win));
+  assert.match(firefoxUserAgent("darwin"), /Macintosh; Intel Mac OS X 10\.15/);
+  assert.match(firefoxUserAgent("linux"), /X11; Linux x86_64/);
+});
+
+test("isGoogleAuthUrl matches accounts/GIS/oauth and ignores Search", () => {
+  assert.equal(isGoogleAuthUrl("https://accounts.google.com/v3/signin/identifier"), true);
+  assert.equal(isGoogleAuthUrl("https://accounts.youtube.com/accounts/SetSID"), true);
+  assert.equal(isGoogleAuthUrl("https://gsi.google.com/gsi/iframe"), true);
+  assert.equal(isGoogleAuthUrl("https://www.google.com/search?q=jobs"), false);
+  assert.equal(isGoogleAuthHost("www.google.com", "/signin/v2/identifier"), true);
+  assert.equal(isGoogleAuthUrl("https://linkedin.com/login"), false);
 });
 
 test("pacingDelayMs draws a human-cadence gap: base range, with an occasional longer tail", () => {
