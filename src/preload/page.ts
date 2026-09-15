@@ -1,5 +1,93 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+// --- Present as plain Chrome, at document-start -----------------------------------------
+//
+// Electron leaks "Electron"/app-name tokens through `navigator.userAgentData` — both the
+// low-entropy `brands` and the high-entropy `fullVersionList` — and can expose
+// `navigator.webdriver`. Sites like Google's sign-in read those JS signals and refuse the
+// browser as "not secure", even when the UA string + client-hint headers are already clean
+// (chrome-compat.applyChromeSession does that over the wire). This scrubs the JS signals in
+// the page's own world. Crucially it runs from the preload, which finishes before the page's
+// first script, so it beats the detection code — unlike a did-start-loading/dom-ready inject.
+//
+// Truthful: it only removes the Electron/app-name tokens and keeps the real Chromium version;
+// it does not claim to be a browser Echo is not.
+function installEchoStealth(): void {
+  type Brand = { brand?: string; version?: string };
+  const scrub = (list: Brand[] | undefined): Brand[] | undefined => {
+    if (!Array.isArray(list)) return list;
+    const out = list.filter((b) => b && typeof b.brand === "string" && !/electron|echo/i.test(b.brand));
+    const chromium = out.find((b) => /chromium/i.test(b.brand || ""));
+    if (chromium && !out.some((b) => b.brand === "Google Chrome")) {
+      out.unshift({ brand: "Google Chrome", version: chromium.version });
+    }
+    return out;
+  };
+  const nav = navigator as unknown as Record<string, unknown> & { userAgent: string };
+  const win = window as unknown as Record<string, unknown>;
+  try {
+    Object.defineProperty(nav, "webdriver", { get: () => false, configurable: true });
+  } catch {
+    /* some builds lock the property; the AutomationControlled switch already zeroes it */
+  }
+  try {
+    const ua = nav.userAgent || "";
+    if (/electron|(?:^| )echo\//i.test(ua)) {
+      const clean = ua.replace(/\s(?:Echo|Electron)\/[^\s]+/gi, "");
+      Object.defineProperty(nav, "userAgent", { get: () => clean, configurable: true });
+      Object.defineProperty(nav, "appVersion", { get: () => clean.replace(/^Mozilla\//, ""), configurable: true });
+    }
+  } catch {
+    /* keep the session-provided UA */
+  }
+  try {
+    const uad = nav.userAgentData as
+      | { brands?: Brand[]; getHighEntropyValues?: (h: string[]) => Promise<Record<string, unknown>> }
+      | undefined;
+    if (uad) {
+      const brands = scrub(uad.brands);
+      try {
+        Object.defineProperty(uad, "brands", { get: () => brands, configurable: true });
+      } catch {
+        /* read-only in some builds; high-entropy scrub below still runs */
+      }
+      if (typeof uad.getHighEntropyValues === "function") {
+        const orig = uad.getHighEntropyValues.bind(uad);
+        Object.defineProperty(uad, "getHighEntropyValues", {
+          configurable: true,
+          writable: true,
+          value: (hints: string[]) =>
+            orig(hints).then((v) => {
+              if (v && Array.isArray(v.brands)) v.brands = scrub(v.brands as Brand[]);
+              if (v && Array.isArray(v.fullVersionList)) v.fullVersionList = scrub(v.fullVersionList as Brand[]);
+              return v;
+            }),
+        });
+      }
+    }
+  } catch {
+    /* userAgentData missing (non-secure context) — nothing to scrub */
+  }
+  try {
+    const chrome = (win.chrome as Record<string, unknown>) || {};
+    if (!chrome.runtime) chrome.runtime = {};
+    if (!chrome.app) chrome.app = { isInstalled: false };
+    if (typeof chrome.csi !== "function") chrome.csi = () => ({});
+    if (typeof chrome.loadTimes !== "function") chrome.loadTimes = () => ({});
+    win.chrome = chrome;
+  } catch {
+    /* window.chrome is best-effort cosmetic */
+  }
+}
+
+try {
+  // Runs the shim in the page's main world at document-start (same mechanism as the dialog
+  // shim below). Self-contained: it captures nothing from this isolated-world scope.
+  contextBridge.executeInMainWorld({ func: installEchoStealth });
+} catch {
+  /* older Electron without executeInMainWorld — the wire-level UA/client hints still apply */
+}
+
 const INTERACTIVE =
   'a, button, input, textarea, select, summary, [role="button"], [role="link"], [role="tab"], [contenteditable="true"]';
 
