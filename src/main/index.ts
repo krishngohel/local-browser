@@ -450,6 +450,11 @@ function registerIpc(): void {
     broadcast();
     return publicCaptchaSolverStatus();
   });
+  // Open a trusted external link (e.g. "get a CapSolver key") in the system browser. The chrome
+  // UI is our own page, but keep it https-only so a stray value can never launch anything else.
+  ipcMain.handle("shell:open-external", (_e, url: unknown) => {
+    if (typeof url === "string" && /^https:\/\//i.test(url)) void shell.openExternal(url);
+  });
   ipcMain.handle("profile:get", () => getProfile());
   ipcMain.handle("profile:update", (_e, next: Partial<Profile>) => setProfile(next));
   ipcMain.handle("update:apply", () => {

@@ -57,6 +57,7 @@ declare global {
       }) => Promise<CaptchaSolverPublic>;
       getProfile: () => Promise<Profile>;
       updateProfile: (next: Partial<Profile>) => Promise<Profile>;
+      openExternal: (url: string) => Promise<void>;
       applyUpdate: () => Promise<void>;
       viewUpdateRelease: () => Promise<void>;
       toolManifest: () => Promise<ToolManifestEntry[]>;

@@ -231,6 +231,10 @@ export function initSettings(
   document.getElementById("captcha-solver-key-clear")?.addEventListener("click", () => void clearCaptchaKey());
   document.getElementById("captcha-solver-capsolver-save")?.addEventListener("click", () => void saveCapsolverKey());
   document.getElementById("captcha-solver-capsolver-clear")?.addEventListener("click", () => void clearCapsolverKey());
+  document.getElementById("capsolver-get-key")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    void window.lb?.openExternal("https://dashboard.capsolver.com/");
+  });
   document.getElementById("captcha-solver-model-save")?.addEventListener("click", () => void saveCaptchaModel());
   const captchaKey = document.getElementById("captcha-solver-key") as HTMLInputElement | null;
   captchaKey?.addEventListener("keydown", (event) => {
@@ -605,7 +609,16 @@ function renderCaptchaSolver(next: AppState): void {
   }
   const capStatus = document.getElementById("captcha-solver-capsolver-status");
   if (capStatus) {
-    capStatus.textContent = capsolver && pub.configured ? "CapSolver key saved." : "No CapSolver key saved.";
+    // Reflect real readiness so the setup state is obvious at a glance, not just "key saved".
+    if (!capsolver || !pub.configured) {
+      capStatus.textContent = "No CapSolver key saved.";
+    } else if (!pub.enabled) {
+      capStatus.textContent = "CapSolver key saved — turn the solver on above to use it.";
+    } else if (pub.autoSolve) {
+      capStatus.textContent = "CapSolver key saved — auto-solving challenges the moment they appear.";
+    } else {
+      capStatus.textContent = "CapSolver key saved — auto-solve off; the assistant calls captcha_solve.";
+    }
   }
   const status = document.getElementById("captcha-solver-key-status");
   if (status) {

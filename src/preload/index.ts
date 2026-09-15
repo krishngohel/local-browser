@@ -58,6 +58,7 @@ contextBridge.exposeInMainWorld("lb", {
   updateProfile: (next: Partial<Profile>): Promise<Profile> => ipcRenderer.invoke("profile:update", next),
   applyUpdate: () => ipcRenderer.invoke("update:apply"),
   viewUpdateRelease: () => ipcRenderer.invoke("update:view-release"),
+  openExternal: (url: string): Promise<void> => ipcRenderer.invoke("shell:open-external", url),
   toolManifest: (): Promise<ToolManifestEntry[]> => ipcRenderer.invoke("tools:manifest"),
   setPaused: (p: boolean): Promise<boolean> => ipcRenderer.invoke("activity:pause", p),
   clearActivity: () => ipcRenderer.invoke("activity:clear"),
