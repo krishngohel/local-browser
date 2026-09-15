@@ -192,6 +192,53 @@ export const CAPTCHA_SCAN_SCRIPT = `(() => {
 })()`;
 
 /**
+ * Scans for a sign-in wall — the other thing that silently stalls an unattended run. Detection
+ * only; Echo can never enter someone's credentials or 2FA, so the point is to notice the wall
+ * instantly (so the run hands off fast instead of the model flailing) and to prompt a one-time
+ * login that the persistent profile then remembers.
+ *
+ * Deliberately conservative to avoid false-flagging an apply form that merely links to sign-in:
+ * it fires only on a real credential prompt (a password field that is not hidden/disabled) or a
+ * genuine auth URL (login / signin / sso / checkpoint / oauth endpoints). A "Sign in" link in a
+ * header does not count. Returns `{ present, kind, host, url }` where kind is
+ * "password" | "signin" | null. Layout-free (attribute/inline-style visibility) so it behaves
+ * the same in a headless DOM as in Chromium.
+ */
+export const LOGIN_SCAN_SCRIPT = `(() => {
+  try {
+    const notHidden = (el) => {
+      let n = el;
+      let hops = 0;
+      while (n && n.nodeType === 1 && hops < 24) {
+        if (n.hidden) return false;
+        const st = n.style;
+        if (st && (st.display === 'none' || st.visibility === 'hidden')) return false;
+        let cs = null;
+        try { cs = getComputedStyle(n); } catch (e) { cs = null; }
+        if (cs && (cs.display === 'none' || cs.visibility === 'hidden')) return false;
+        n = n.parentElement;
+        hops += 1;
+      }
+      return true;
+    };
+    const url = (location.href || '').toLowerCase();
+    const host = location.host || '';
+    // A path/query that is unambiguously an auth endpoint. Delimited so it won't match words
+    // like "logint" or a "/authors/" path.
+    const AUTH_URL =
+      /(?:^|[\\/?#&])(login|log-in|signin|sign-in|sign_in|authenticate|checkpoint)(?:[\\/?#&=.]|$)|\\/sessions\\/new|\\/uas\\/login|\\/auth(?:[\\/?#]|$)|\\/oauth(?:[\\/?#]|$)|[?&](return_to|redirect(_uri)?)=[^&]*log/i;
+    const pw = Array.from(document.querySelectorAll('input[type="password"]')).some(
+      (el) => !el.disabled && notHidden(el),
+    );
+    const authUrl = AUTH_URL.test(url);
+    const kind = pw ? 'password' : authUrl ? 'signin' : null;
+    return { present: Boolean(kind), kind, host, url: location.href };
+  } catch (e) {
+    return { present: false, kind: null, host: '', url: '' };
+  }
+})()`;
+
+/**
  * Unclips overflow:hidden ancestors, scrolls the largest challenge widget into view, and
  * nudges absolutely-positioned popovers back into the viewport. Returns the largest widget
  * box so main can grow the window. Challenge iframes resize themselves (3×3 vs 4×4 grids);

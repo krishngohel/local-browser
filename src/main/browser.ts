@@ -20,6 +20,7 @@ import {
   FORMS_SCRIPT,
   PAGE_INFO_SCRIPT,
   CAPTCHA_SCAN_SCRIPT,
+  LOGIN_SCAN_SCRIPT,
   CAPTCHA_REVEAL_SCRIPT,
   PERF_TIMING_SCRIPT,
   dispatchKeyScript,
@@ -48,6 +49,9 @@ import { RateLimiter } from "./rate-limit";
 
 /** Shape returned by `CAPTCHA_SCAN_SCRIPT`. */
 type CaptchaScan = { present?: boolean; kind?: string | null; visible?: boolean };
+
+/** Shape returned by `LOGIN_SCAN_SCRIPT`. */
+type LoginScan = { present?: boolean; kind?: string | null; host?: string; url?: string };
 
 export type SnapshotItem = {
   ref: string;
@@ -293,6 +297,8 @@ export class BrowserHub {
   private showAssistantCursor = true;
   /** Hosts already announced as challenged this session, so the notification fires once each. */
   private captchaNotified = new Set<string>();
+  /** Hosts already announced as a sign-in wall this session, so the login ping fires once each. */
+  private loginNotified = new Set<string>();
   /** Tab ids with an auto-solve in flight, so detect + navigate don't double-fire CapSolver. */
   private captchaAutoSolving = new Set<string>();
   /** Last auto-solve attempt per `tabId|host`, so a challenge is not retried in a tight loop. */
@@ -1163,7 +1169,8 @@ export class BrowserHub {
     this.onChange();
     const landed = tab.view.webContents.getURL();
     const challenge = await this.noteCaptchaOnLoad(tab, landed);
-    return `${landed}${backedOff}${challenge}`;
+    const authWall = await this.noteLoginOnLoad(tab, landed);
+    return `${landed}${backedOff}${challenge}${authWall}`;
   }
 
   /**
@@ -1221,6 +1228,46 @@ export class BrowserHub {
       return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Call captcha_solve. If that fails, ask the user to complete it in the Echo window. Invisible/score-based checks still cannot be solved.`;
     }
     return `\n⚠ A ${found.kind ?? "bot"} challenge is present on this page. Echo does not solve CAPTCHAs unless you enable the solver in Settings → System — pause and ask the user to complete it in the Echo window, then continue.`;
+  }
+
+  /**
+   * The other silent staller: a sign-in wall. Echo can never enter credentials or 2FA, so this
+   * does not try to — it notices the wall the instant a navigation lands on one, pings the user
+   * once per host to sign in (the persistent profile then remembers it for every later run), and
+   * hands the assistant a crisp instruction so it stops trying to "apply" on a login page. The
+   * warning rides back on the navigation result, next to the CAPTCHA one.
+   */
+  private async noteLoginOnLoad(tab: Tab, landed: string): Promise<string> {
+    let found: LoginScan | null = null;
+    try {
+      found = (await this.execMain(tab, LOGIN_SCAN_SCRIPT)) as LoginScan | null;
+    } catch {
+      return "";
+    }
+    if (!found?.present) return "";
+    const host = (() => {
+      try {
+        return new URL(landed).host;
+      } catch {
+        return landed;
+      }
+    })();
+    if (!this.loginNotified.has(host)) {
+      this.loginNotified.add(host);
+      try {
+        if (Notification.isSupported()) {
+          new Notification({
+            title: "Echo needs you: sign in",
+            body: `${host} is asking you to sign in. Log in once in the Echo window — Echo keeps you signed in here for future runs.`,
+          }).show();
+        }
+      } catch {
+        /* notifications are a nicety, never required */
+      }
+    }
+    // Echo persists this profile's cookies, so a completed login is a one-time cost. Tell the
+    // assistant not to burn steps trying to authenticate itself.
+    return `\n⚠ Sign-in wall on ${host}. Echo can't enter credentials or 2FA for you — don't try to log in yourself. If you've signed in here before, the session persists, so reload or continue. Otherwise ask the user to sign in once in the Echo window, then wait_for and re-check.`;
   }
 
   /** On-demand CAPTCHA scan, for the `captcha_check` tool. Always the main frame — a selected iframe would miss the challenge popover Google injects on `document.body`. */
